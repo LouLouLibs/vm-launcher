@@ -32,7 +32,7 @@ Inside the guest: `claude-run` / `codex-run` start an agent prompts-off (the VM 
 
 ## Documentation
 
-- **The docs site** — guide, CLI and policy reference, credentials, connectors. Sources in [`docs/`](docs/) (start at [`docs/getting-started.md`](docs/getting-started.md)); `scripts/docs-site.sh preview` serves it locally.
+- **[The docs site](https://louloulibs.github.io/vm-launcher/)** — guide, CLI and policy reference, credentials, connectors. Sources in [`docs/`](docs/) (start at [`docs/getting-started.md`](docs/getting-started.md)); `scripts/docs-site.sh preview` serves it locally.
 - **[`policy/contract.ncl`](policy/contract.ncl)** — the policy contract, the source of truth for every field (shares, egress, secrets, tools, the `agent` profile, resources, git identity…).
 - **[`CLAUDE.md`](CLAUDE.md)** — repo orientation, build/test commands, the mandatory e2e rule.
 
