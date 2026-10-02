@@ -1,0 +1,73 @@
+{
+  "agent": {
+    "preset": "claude",
+    "command": "claude",
+    "flags": [
+      "--dangerously-skip-permissions"
+    ],
+    "instructionsFile": "CLAUDE.md",
+    "instructions": "",
+    "configDir": ".claude",
+    "configGuest": "/var/lib/claude",
+    "taskDir": "tasks",
+    "stateDirs": [
+      "projects",
+      "todos",
+      "session-env",
+      "shell-snapshots",
+      "file-history",
+      "paste-cache"
+    ],
+    "stateFiles": [
+      "history.jsonl"
+    ],
+    "homeStateFiles": [
+      ".claude.json"
+    ]
+  },
+  "auth": "bind",
+  "egress": {
+    "hosts": [
+      "github.com",
+      "codeload.github.com",
+      "api.github.com"
+    ],
+    "none": false
+  },
+  "git": {
+    "allowedGithubOrgs": [
+      "LouLouLibs",
+      "alice/myproject"
+    ],
+    "email": "",
+    "name": ""
+  },
+  "inputs": [],
+  "julia": {
+    "env": "env/julia"
+  },
+  "project": "/home/alice/projects/VM-TESTING",
+  "r": {
+    "packages": []
+  },
+  "resources": {
+    "memMb": 2048,
+    "vcpu": 2
+  },
+  "secrets": [],
+  "stateDir": "",
+  "tools": [
+    "coreutils",
+    "bashInteractive",
+    "git",
+    "jq",
+    "gnused"
+  ],
+  "work": {
+    "default": "rw",
+    "hidden": [],
+    "readOnly": [
+      "env/vm"
+    ]
+  }
+}

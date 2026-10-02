@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="vm-launcher: a picket fence in a window, the network cloud beyond it">
+  <!-- The VM: the LouLouLibs window frame (rounded frame, title bar with
+       three dots), so the LouLouLibs icons read as a family. -->
+  <rect x="2" y="3" width="60" height="58" rx="9" fill="#fffffc" stroke="#1f2328" stroke-width="2.5"/>
+  <path d="M2 16 H62" stroke="#1f2328" stroke-width="2"/>
+  <circle cx="10" cy="9.6" r="2.2" fill="#ef4444"/>
+  <circle cx="17" cy="9.6" r="2.2" fill="#eab308"/>
+  <circle cx="24" cy="9.6" r="2.2" fill="#22c55e"/>
+  <!-- The network outside: the cloud of the egress status glyph. -->
+  <path d="M40.5 31 a4.2 4.2 0 0 1 0.6 -8.3 a5.6 5.6 0 0 1 10.6 1.4 a3.5 3.5 0 0 1 0.3 6.9 Z"
+        fill="#e0e7ff" stroke="#090c8d" stroke-width="1.6" stroke-linejoin="round"/>
+  <!-- The fence: five pointed pickets on two rails, in the accent green. -->
+  <g fill="#22c55e" stroke="#15803d" stroke-width="1" stroke-linejoin="round">
+    <path d="M8 55 V38 L11 34 L14 38 V55 Z"/>
+    <path d="M18 55 V38 L21 34 L24 38 V55 Z"/>
+    <path d="M28 55 V38 L31 34 L34 38 V55 Z"/>
+    <path d="M38 55 V38 L41 34 L44 38 V55 Z"/>
+    <path d="M48 55 V38 L51 34 L54 38 V55 Z"/>
+  </g>
+  <g fill="#15803d">
+    <rect x="6" y="41" width="50" height="2.6" rx="1"/>
+    <rect x="6" y="49" width="50" height="2.6" rx="1"/>
+  </g>
+</svg>

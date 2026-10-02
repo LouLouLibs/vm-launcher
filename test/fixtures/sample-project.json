@@ -1,0 +1,100 @@
+{
+  "agent": {
+    "preset": "claude",
+    "command": "claude",
+    "flags": [
+      "--dangerously-skip-permissions"
+    ],
+    "instructionsFile": "CLAUDE.md",
+    "instructions": "",
+    "configDir": ".claude",
+    "configGuest": "/var/lib/claude",
+    "taskDir": "tasks",
+    "stateDirs": [
+      "projects",
+      "todos",
+      "session-env",
+      "shell-snapshots",
+      "file-history",
+      "paste-cache"
+    ],
+    "stateFiles": [
+      "history.jsonl"
+    ],
+    "homeStateFiles": [
+      ".claude.json"
+    ]
+  },
+  "auth": "bind",
+  "egress": {
+    "hosts": [
+      "api.anthropic.com",
+      "pypi.org",
+      "files.pythonhosted.org",
+      "pkg.julialang.org",
+      "us-east.pkg.julialang.org",
+      "storage.julialang.net",
+      "api.github.com",
+      "github.com",
+      "codeload.github.com",
+      "myhost.example.ts.net"
+    ],
+    "none": false
+  },
+  "git": {
+    "allowedGithubOrgs": [
+      "LouLouLibs",
+      "alice"
+    ],
+    "email": "",
+    "name": ""
+  },
+  "inputs": [],
+  "julia": {
+    "env": "env/julia"
+  },
+  "project": "/home/alice/projects/myproject",
+  "r": {
+    "packages": []
+  },
+  "resources": {
+    "memMb": 64000,
+    "vcpu": 12
+  },
+  "secrets": [
+    {
+      "env": "GH_TOKEN",
+      "source": "~/.config/microvm/tokens/myproject.gh"
+    }
+  ],
+  "stateDir": "",
+  "tools": [
+    "coreutils",
+    "bashInteractive",
+    "git",
+    "git-lfs",
+    "gh",
+    "jq",
+    "nickel",
+    "gnused",
+    "ripgrep",
+    "xan",
+    "miller",
+    "nclq",
+    "dt-cli-tools",
+    "pandoc",
+    "fd",
+    "uv",
+    "duckdb",
+    "julia-bin",
+    "claude-code"
+  ],
+  "work": {
+    "default": "rw",
+    "hidden": [],
+    "readOnly": [
+      "input",
+      "env/vm"
+    ]
+  }
+}

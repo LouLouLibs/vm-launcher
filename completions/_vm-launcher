@@ -1,0 +1,84 @@
+#compdef vm-launcher
+#
+# zsh completion for vm-launcher.
+#
+# Session ids come from `vm-launcher ids`, not from parsing `ls`: the
+# table is for humans and its columns have already changed twice, while
+# `ids` prints one id per line and nothing else. `--live` narrows to VMs
+# that can actually be acted on, which is what attach/down want — there
+# is no point completing `down` with a session that ended yesterday.
+#
+# Each id is offered with its project and state as the description, so
+# picking between two running VMs does not mean memorising timestamps.
+
+_vm_launcher_sessions() {
+  local -a ids descs
+  local id line
+  # `ls` is only consulted for the human-readable description; if its
+  # format shifts, completion degrades to bare ids rather than breaking.
+  for id in ${(f)"$(_call_program vm-launcher-ids vm-launcher ids ${1:+--live} 2>/dev/null)"}; do
+    line=$(vm-launcher ls --all 2>/dev/null | command grep -F -- "$id" | head -1)
+    if [[ -n $line ]]; then
+      # columns: ID PROJECT STATE ...
+      descs+=("${id}:$(print -r -- $line | awk '{print $3" "$4" — "$2}')")
+    else
+      descs+=("${id}:")
+    fi
+  done
+  _describe -t sessions 'session' descs
+}
+
+_vm_launcher_live_sessions()  { _vm_launcher_sessions live }
+_vm_launcher_all_sessions()   { _vm_launcher_sessions }
+
+_vm-launcher() {
+  local curcontext="$curcontext" state line
+  typeset -A opt_args
+
+  local -a subcommands
+  subcommands=(
+    'attach:open a shell in a running VM'
+    'down:power off a detached VM'
+    'ls:list sessions'
+    'clean:delete finished sessions'
+    'help:show usage'
+  )
+
+  _arguments -C \
+    '--policy[Nickel policy file]:policy:_files -g "*.ncl"' \
+    '--egress[network posture]:posture:((
+      fenced\:"in-guest proxy + nftables allowlist (default)"
+      unfenced\:"NO fence — direct internet"
+      airgap\:"no network egress at all"))' \
+    '--detach[boot headless and return to the prompt]' \
+    '--show[print the resolved policy and exit]' \
+    '--keep-state[preserve the session state dir]' \
+    '--fast[multi-threaded mkfs.erofs]' \
+    '--help[show usage]' \
+    '1: :->cmd' \
+    '*:: :->args' && return 0
+
+  case $state in
+    cmd)
+      _describe -t commands 'vm-launcher command' subcommands
+      ;;
+    args)
+      case $words[1] in
+        attach|down)
+          # Only VMs that are actually up can be attached to or stopped.
+          _vm_launcher_live_sessions
+          ;;
+        clean)
+          _arguments \
+            '--exited[delete every session that is not running]' \
+            '*: :_vm_launcher_all_sessions'
+          ;;
+        ls)
+          _arguments '--all[every recorded session]'
+          ;;
+      esac
+      ;;
+  esac
+}
+
+_vm-launcher "$@"

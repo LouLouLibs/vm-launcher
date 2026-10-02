@@ -1,0 +1,9 @@
+_build/
+*.install
+.merlin
+result
+result-*
+.claude/
+site/node_modules/
+site/.vitepress/dist/
+site/.vitepress/cache/

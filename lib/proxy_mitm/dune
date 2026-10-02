@@ -1,0 +1,5 @@
+(library
+ (name vm_launcher_proxy_mitm)
+ (wrapped false)
+ (libraries vm_launcher_lib lwt lwt.unix tls tls-lwt
+   cohttp cohttp-lwt cohttp-lwt-unix http domain-name))

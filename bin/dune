@@ -1,0 +1,7 @@
+(executable
+ (name main)
+ (libraries vm_launcher_lib))
+
+(executable
+ (name vm_egress_proxy)
+ (libraries vm_launcher_lib vm_launcher_proxy_mitm lwt lwt.unix ca-certs))

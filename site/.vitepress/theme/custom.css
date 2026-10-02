@@ -1,0 +1,246 @@
+/* vm-launcher docs in the LouLouLibs house style:
+   system sans on off-white, a narrow reading column, small numbered
+   headings, dotted links, a green accent and a boxed contents list. */
+
+:root {
+  --bb-bg: #fffffc;
+  --bb-surface: #f6f8fa;
+  --bb-surface-alt: #f3f4f6;
+  --bb-text: #000000;
+  --bb-secondary: #555555;
+  --bb-muted: #777777;
+  --bb-link: #090c8d;
+  --bb-link-ul: #bbbbff;
+  --bb-border: #e5e7eb;
+  --bb-border-nav: #e0e2e0;
+  --bb-accent: #22c55e;
+  --bb-toc-bg: #e0e7ff;
+  --bb-bq-text: #4a4a4a;
+  --bb-nav-from: #f8faf8;
+  --bb-nav-to: #f6f8f6;
+
+  --vp-font-family-base: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+  --vp-font-family-mono: ui-monospace, "SF Mono", "Cascadia Code", Menlo, Consolas, monospace;
+
+  --vp-c-bg: var(--bb-bg);
+  --vp-c-bg-alt: var(--bb-surface);
+  --vp-c-bg-soft: var(--bb-surface-alt);
+  --vp-c-bg-elv: var(--bb-bg);
+  --vp-c-text-1: var(--bb-text);
+  --vp-c-text-2: var(--bb-secondary);
+  --vp-c-text-3: var(--bb-muted);
+  --vp-c-divider: var(--bb-border);
+  --vp-c-gutter: var(--bb-border);
+  --vp-c-brand-1: var(--bb-link);
+  --vp-c-brand-2: #2a2db0;
+  --vp-c-brand-3: #3b3fc8;
+  --vp-c-brand-soft: var(--bb-toc-bg);
+  --vp-code-bg: var(--bb-surface-alt);
+  --vp-code-color: var(--bb-text);
+  --vp-code-block-bg: var(--bb-surface);
+  --vp-nav-height: 52px;
+  --vp-layout-max-width: 1280px;
+}
+
+.dark {
+  --bb-bg: #0d1117;
+  --bb-surface: #161b22;
+  --bb-surface-alt: #1c2128;
+  --bb-text: #e6edf3;
+  --bb-secondary: #8b949e;
+  --bb-muted: #6e7681;
+  --bb-link: #7dd3a0;
+  --bb-link-ul: #3d7a5488;
+  --bb-border: #30363d;
+  --bb-border-nav: #21262d;
+  --bb-accent: #3fb950;
+  --bb-toc-bg: #1c2654;
+  --bb-bq-text: #b1bac4;
+  --bb-nav-from: #0d1117;
+  --bb-nav-to: #111518;
+  --vp-c-brand-2: #9ee2b8;
+  --vp-c-brand-3: #5fbf86;
+}
+
+/* ---------- top bar ---------- */
+
+.VPNavBar,
+.VPNavBar.has-sidebar .content-body,
+.VPNavBar:not(.home) .content-body {
+  background: linear-gradient(to bottom, var(--bb-nav-from), var(--bb-nav-to)) !important;
+}
+.VPNavBar { border-bottom: 1px solid var(--bb-border-nav); }
+.VPNavBar .divider { display: none; }
+.VPNavBarTitle .title {
+  font-family: var(--vp-font-family-mono);
+  font-weight: 600;
+  font-size: 15px;
+  border-bottom: 0 !important;
+}
+.VPNavBarTitle .title::after {
+  content: "Fenced agent VMs";
+  font-family: var(--vp-font-family-base);
+  font-weight: 400;
+  font-size: 13px;
+  color: var(--bb-secondary);
+  margin-left: 0.6rem;
+}
+@media (max-width: 640px) { .VPNavBarTitle .title::after { display: none; } }
+.VPNavBarMenuLink, .VPNavBarMenuGroup .text { font-size: 13px; font-weight: 500; }
+
+/* ---------- reading column and type ---------- */
+
+.VPDoc .content-container { max-width: 42rem !important; }
+.vp-doc {
+  font-size: 15px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+.vp-doc p, .vp-doc li { line-height: 1.5; }
+.vp-doc p { margin: 0 0 0.85rem; }
+.vp-doc ul, .vp-doc ol { margin: 0 0 0.85rem; padding-left: 1.4rem; }
+.vp-doc li + li { margin-top: 0.2rem; }
+.vp-doc strong { font-weight: 600; }
+
+.vp-doc h1, .vp-doc h2, .vp-doc h3 {
+  font-family: var(--vp-font-family-base);
+  font-weight: 600;
+  letter-spacing: -0.006em;
+  line-height: 1.3;
+}
+.vp-doc h1 { font-size: 1.45rem; margin: 0 0 0.35rem; letter-spacing: -0.012em; }
+.vp-doc h2 {
+  font-size: 1.05rem;
+  margin: 2rem 0 0.55rem;
+  padding-top: 0;
+  border-top: 0;
+}
+.vp-doc h3 { font-size: 0.95rem; margin: 1.3rem 0 0.4rem; color: var(--bb-secondary); }
+
+/* Section numbers, as pandoc adds them in the house style. */
+.vp-doc { counter-reset: bb-h2; }
+.vp-doc h2 { counter-increment: bb-h2; counter-reset: bb-h3; }
+.vp-doc h3 { counter-increment: bb-h3; }
+.vp-doc h2::before, .vp-doc h3::before {
+  font-family: var(--vp-font-family-mono);
+  font-weight: 500;
+  font-size: 0.82em;
+  color: var(--bb-muted);
+  font-variant-numeric: tabular-nums;
+  margin-right: 0.45em;
+}
+.vp-doc h2::before { content: counter(bb-h2); }
+.vp-doc h3::before { content: counter(bb-h2) "." counter(bb-h3); }
+
+/* Subtitle and meta strip under the title: `{.subtitle}` / `{.meta}`. */
+.vp-doc .subtitle { color: var(--bb-secondary); font-size: 1rem; margin: 0 0 0.9rem; }
+.vp-doc .meta {
+  font-size: 0.82rem;
+  color: var(--bb-secondary);
+  margin: 0 0 1.4rem;
+  padding-bottom: 0.8rem;
+  border-bottom: 1px solid var(--bb-border);
+}
+.vp-doc .meta strong { color: var(--bb-muted); }
+
+/* ---------- links, quotes, code, tables ---------- */
+
+.vp-doc a {
+  color: var(--bb-link);
+  font-weight: inherit;
+  text-decoration: underline dotted;
+  text-decoration-color: var(--bb-link-ul);
+  text-underline-offset: 2px;
+}
+.vp-doc a:hover { text-decoration-style: solid; text-decoration-color: var(--bb-link); }
+.vp-doc a.header-anchor { text-decoration: none; }
+
+.vp-doc blockquote {
+  border-left: 3px solid var(--bb-accent);
+  padding: 0.45rem 1rem;
+  margin: 0 0 1rem;
+  color: var(--bb-bq-text);
+  font-style: italic;
+}
+.vp-doc blockquote > p { color: inherit; font-size: inherit; }
+
+.vp-doc :not(pre) > code {
+  font-size: 0.82em;
+  border: 1px solid var(--bb-border);
+  border-radius: 3px;
+  padding: 0.1em 0.35em;
+}
+.vp-doc div[class*='language-'] {
+  border: 1px solid var(--bb-border);
+  border-radius: 4px;
+}
+.vp-doc div[class*='language-'] code { font-size: 13px; }
+
+.vp-doc table { font-size: 0.85rem; display: table; width: 100%; }
+.vp-doc th, .vp-doc td { border: 0; border-bottom: 1px solid var(--bb-border); padding: 0.4rem 0.6rem; }
+.vp-doc th {
+  font-size: 0.74rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--bb-secondary);
+  background: var(--bb-surface);
+}
+.vp-doc tr:nth-child(2n) { background: transparent; }
+
+.vp-doc img {
+  border: 1px solid var(--bb-border);
+  border-radius: 6px;
+  margin: 0.6rem 0 1.1rem;
+}
+
+.vp-doc kbd {
+  font-family: var(--vp-font-family-base);
+  font-size: 0.85em;
+  padding: 0.05em 0.4em;
+  border: 1px solid var(--bb-border);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  background: var(--bb-surface);
+}
+
+.vp-doc .custom-block, .vp-doc .github-alert { border-radius: 4px; font-size: 0.9rem; }
+
+/* ---------- contents box (the page outline) ---------- */
+
+.VPDocAsideOutline {
+  border: 1px solid var(--bb-border) !important;
+  border-radius: 6px;
+  padding: 0 !important;
+  overflow: hidden;
+}
+.VPDocAsideOutline .outline-title {
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--bb-secondary);
+  background: var(--bb-surface);
+  border-bottom: 1px solid var(--bb-border);
+  padding: 0.35rem 0.7rem;
+  line-height: 1.6;
+}
+.VPDocAsideOutline .content { border-left: 0 !important; padding: 0.35rem 0.7rem 0.5rem !important; }
+.VPDocAsideOutline .outline-marker { display: none; }
+.VPDocAsideOutline .outline-link { font-size: 12px; line-height: 1.8; }
+.VPDocAsideOutline .outline-link.active {
+  color: var(--bb-link);
+  background: var(--bb-toc-bg);
+  border-radius: 3px;
+  padding: 0 0.3rem;
+  margin: 0 -0.3rem;
+}
+
+/* ---------- sidebar ---------- */
+
+.VPSidebar { border-right: 1px solid var(--bb-border); }
+.VPSidebarItem .text { font-size: 13px; }
+.VPSidebarItem.level-0 > .item > .text { font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--bb-secondary); }
+
+/* vm-launcher: reference tables lead with a flag or field name; keep it on
+   one line (`--policy PATH`, `work.readOnly`) instead of wrapping. */
+.vp-doc td:first-child code { white-space: nowrap; }

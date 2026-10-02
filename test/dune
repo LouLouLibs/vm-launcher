@@ -1,0 +1,30 @@
+(test
+ (name test_vm_launcher)
+ (libraries vm_launcher_lib yojson x509 domain-name ptime ptime.clock.os)
+ (deps (glob_files fixtures/*.json)))
+
+(test
+ (name test_proxy_mitm)
+ (libraries vm_launcher_lib vm_launcher_proxy_mitm
+   lwt lwt.unix tls tls-lwt
+   cohttp cohttp-lwt cohttp-lwt-unix http
+   x509 domain-name ptime ptime.clock.os ca-certs))
+
+; CLI smoke tests: spawn the real main.exe with controlled env +
+; capture stdout/stderr/exit code. Hermetic via VM_LAUNCHER_STATE_BASE
+; (so no /run/vm-launcher root requirement) and a fake `nix` shim on
+; PATH (so no real nix daemon / nixpkgs eval).
+(test
+ (name test_cli)
+ (libraries vm_launcher_lib)
+ (deps ../bin/main.exe))
+
+; End-to-end VM boot test. Gated on VM_LAUNCHER_E2E=1 at runtime — the
+; binary itself prints a skip message and exits 0 when the env var
+; isn't set, so this is safe to leave in the default `dune test`
+; target. Run by hand on a KVM host after big changes touching the boot
+; path: `VM_LAUNCHER_E2E=1 dune test test/test_e2e_vm.exe`.
+(test
+ (name test_e2e_vm)
+ (libraries vm_launcher_lib)
+ (deps ../bin/main.exe))

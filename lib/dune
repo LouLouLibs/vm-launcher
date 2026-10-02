@@ -1,0 +1,4 @@
+(library
+ (name vm_launcher_lib)
+ (libraries unix yojson x509 mirage-crypto mirage-crypto-pk
+   mirage-crypto-rng mirage-crypto-rng.unix ptime ptime.clock.os http))

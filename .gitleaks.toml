@@ -1,0 +1,13 @@
+# gitleaks config: the default rules, plus one narrow allowlist.
+[extend]
+useDefault = true
+
+# lib/proxy_ca.ml mints the egress proxy's CA and leaf keys AT RUNTIME.
+# `key : X509.Private_key.t` (a record field type) and
+# `X509.Private_key.generate` (a call) trip the generic-api-key rule;
+# neither contains key material.
+[[allowlists]]
+description = "OCaml X509 key types and runtime key generation"
+paths = ['''^lib/proxy_ca\.ml$''']
+regexTarget = "line"
+regexes = ['''X509\.Private_key\.(t|generate)\b''']
