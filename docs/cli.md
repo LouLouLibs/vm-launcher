@@ -7,6 +7,7 @@ vm-launcher attach [ID]
 vm-launcher down [ID]
 vm-launcher ls [--all]
 vm-launcher clean ID… | --exited
+vm-launcher --version | --version-long
 ```
 
 ## Launching
@@ -21,6 +22,8 @@ vm-launcher clean ID… | --exited
 | `--show` | Validate the policy, print it resolved with the egress posture, and exit. Takes no slot. |
 | `--keep-state` | Keep `/run/vm-launcher/session-<pid>/` after exit, for debugging. |
 | `--fast` | Build the guest image with multi-threaded `mkfs.erofs`: 2–4× faster, 10–30% larger, not cache-shared with a normal build. |
+
+`vm-launcher --version` prints the release version, e.g. `vm-launcher 0.2.5-dev`, taken from the repo's `VERSION` file. `--version-long` adds the commit the binary was built from, e.g. `vm-launcher 0.2.5-dev (82ff80b)`; a build from a tree with uncommitted changes reads `<hash>-dirty`.
 
 ## Subcommands
 

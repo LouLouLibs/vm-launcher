@@ -2,3 +2,21 @@
  (name vm_launcher_lib)
  (libraries unix yojson x509 mirage-crypto mirage-crypto-pk
    mirage-crypto-rng mirage-crypto-rng.unix ptime ptime.clock.os http))
+
+; Version + build commit, for `--version` / `--version-long`. The
+; version is the repo-root VERSION file (flake.nix reads the same one).
+; A Nix build has no .git in its sandbox, so the flake hands the rev in
+; through VM_LAUNCHER_REV; a checkout build asks git, marking an
+; uncommitted tree "-dirty". (universe) re-runs this on every build —
+; HEAD moves without any dune-visible file changing — but the output is
+; content-addressed, so an unchanged rev relinks nothing.
+(rule
+ (targets build_info.ml)
+ (deps
+  (universe)
+  (:version ../VERSION))
+ (action
+  (with-stdout-to
+   %{targets}
+   (system
+    "rev=\"${VM_LAUNCHER_REV:-}\"; if [ -z \"$rev\" ]; then rev=$(git rev-parse --short HEAD 2>/dev/null) && { git diff --quiet HEAD 2>/dev/null || rev=\"$rev-dirty\"; }; fi; printf 'let version = \"%s\"\\nlet rev = \"%s\"\\n' \"$(tr -d '[:space:]' < %{version})\" \"${rev:-unknown}\""))))
