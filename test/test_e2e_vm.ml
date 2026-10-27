@@ -1220,9 +1220,38 @@ let test_detached_ssh_attach () =
   in
   Fun.protect
     ~finally:(fun () ->
-      (* Whatever happens, do not leave a VM running: nothing else will
-         reap it, since the launcher already exited. *)
-      (try Unix.kill runner_pid Sys.sigterm with Unix.Unix_error _ -> ());
+      let rc =
+        Sys.command
+          (Printf.sprintf "env HOME=%s %s down %s > %s 2>&1"
+             (Filename.quote home) (Filename.quote bin_path)
+             (Filename.quote (str "id"))
+             (Filename.quote (base ^ "/down-out")))
+      in
+      if rc <> 0 then begin
+        prerr_string (read_file (base ^ "/down-out"));
+        (* A failed assertion or an already-dead runner must not leave
+           this test's session behind. Never remove shares or release
+           the slot until the runner has actually stopped. *)
+        let alive () = Vm_launcher_lib.Ls.pid_is_runner runner_pid in
+        let wait seconds =
+          let deadline = Unix.gettimeofday () +. seconds in
+          let rec loop () =
+            if alive () && Unix.gettimeofday () < deadline then
+              (Unix.sleepf 0.2; loop ())
+          in
+          loop ()
+        in
+        if alive () then begin
+          (try Unix.kill runner_pid Sys.sigterm with Unix.Unix_error _ -> ());
+          wait 20.0;
+          if alive () then begin
+            (try Unix.kill runner_pid Sys.sigkill with Unix.Unix_error _ -> ());
+            wait 5.0
+          end
+        end;
+        assert_b "fallback stopped the detached runner" (not (alive ()));
+        Vm_launcher_lib.Clean.remove_state_dir ~state_base state_dir
+      end;
       (* Release ONLY this VM's detached slot claim. state_base
          is the host's real /run/vm-launcher, so rm-ing slot-*.detached
          wholesale erases the claims of every OTHER detached VM — a
@@ -1240,7 +1269,10 @@ let test_detached_ssh_attach () =
             | Some p when p = runner_pid ->
                 (try Sys.remove path with Sys_error _ -> ())
             | _ | (exception Sys_error _) -> ())
-        (try Sys.readdir state_base with Sys_error _ -> [||]))
+        (try Sys.readdir state_base with Sys_error _ -> [||]);
+      assert_b "detached cleanup removed the state dir"
+        (not (Sys.file_exists state_dir));
+      assert_b "`vm-launcher down` succeeds" (rc = 0))
     (fun () ->
       (* `ls`'s row for this session: the readiness split (booting vs
          detached) is judged by probing the guest's sshd, so only a real
