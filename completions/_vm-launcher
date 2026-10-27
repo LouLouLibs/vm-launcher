@@ -55,6 +55,8 @@ _vm-launcher() {
     '--keep-state[preserve the session state dir]' \
     '--fast[multi-threaded mkfs.erofs]' \
     '--help[show usage]' \
+    '--version[print the version]' \
+    '--version-long[print the version and build commit]' \
     '1: :->cmd' \
     '*:: :->args' && return 0
 

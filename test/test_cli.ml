@@ -465,9 +465,24 @@ let test_cli_state_base_override_used () =
      non-zero. *)
   ignore base
 
+(* --version prints the release, --version-long adds the build commit;
+   neither may need a policy, a flake or a state dir to do it. *)
+let test_cli_version_exits_zero () =
+  let rc, so, _se = spawn_main [ "--version" ] in
+  assert_b "exit code 0" (rc = 0);
+  assert_b "names the binary and version"
+    (String.trim so = "vm-launcher " ^ Vm_launcher_lib.Build_info.version);
+  let rc, so, _se = spawn_main [ "--version-long" ] in
+  assert_b "long: exit code 0" (rc = 0);
+  assert_b "long: version plus commit"
+    (String.trim so
+     = Printf.sprintf "vm-launcher %s (%s)"
+         Vm_launcher_lib.Build_info.version Vm_launcher_lib.Build_info.rev)
+
 let cases =
   [
     "cli-help-exits-zero", test_cli_help_exits_zero;
+    "cli-version-exits-zero", test_cli_version_exits_zero;
     "cli-h-short-help-exits-zero", test_cli_h_short_help_exits_zero;
     "cli-unknown-subcommand-exits-two", test_cli_unknown_subcommand_exits_two;
     "cli-unknown-flag-exits-two", test_cli_unknown_flag_exits_two;

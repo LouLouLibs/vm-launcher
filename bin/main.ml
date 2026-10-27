@@ -83,6 +83,10 @@ Flags (launch only):
                 and the virtiofsd sockets the VM is still using.
   --show        print the resolved policy + egress posture; exit
   --keep-state  preserve /run/vm-launcher/session-<pid>/ after exit (debugging)
+  --version     print the version; exit
+  --version-long
+                print the version and the commit it was built from
+                (short hash, "-dirty" for uncommitted changes); exit
   --fast        drop mkfs.erofs's single-threaded -Efragments/-Ededupe
                 flags so the guest store-disk build uses all cores.
                 ~10-30% larger image, but the build runs ~2-4x faster
@@ -98,6 +102,17 @@ Environment:
 
 let print_help_and_exit () =
   print_string help_text;
+  exit 0
+
+(* --version is the release; --version-long adds the commit it was
+   built from, which is what tells two builds of the same release apart
+   (and what VERSION can't, until it is bumped on every release). *)
+let print_version_and_exit () =
+  Printf.printf "vm-launcher %s\n" Build_info.version;
+  exit 0
+
+let print_version_long_and_exit () =
+  Printf.printf "vm-launcher %s (%s)\n" Build_info.version Build_info.rev;
   exit 0
 
 let speclist =
@@ -129,6 +144,10 @@ let speclist =
       "MODE override egress posture: fenced (default) | unfenced \
        (UNFENCED — direct internet) | airgap (no network)";
     "--help", Arg.Unit print_help_and_exit, " show this help and exit";
+    "--version", Arg.Unit print_version_and_exit,
+      " print the version and exit";
+    "--version-long", Arg.Unit print_version_long_and_exit,
+      " print the version and the commit it was built from, and exit";
     "-h", Arg.Unit print_help_and_exit, " show this help and exit";
   ]
 

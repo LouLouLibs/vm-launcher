@@ -64,8 +64,12 @@
       ];
       vmLauncher = ocamlPackages.buildDunePackage {
         pname = "vm-launcher";
-        version = "0.2.5-dev";
+        # One source of truth: lib/dune reads the same file for --version.
+        version = pkgs.lib.fileContents ./VERSION;
         src = ./.;
+        # `vm-launcher --version-long`. The sandbox has no .git for the
+        # dune rule to ask, so hand it the rev the flake was locked at.
+        VM_LAUNCHER_REV = self.shortRev or self.dirtyShortRev or "unknown";
         duneVersion = "3";
 
         # makeWrapper: the installed launcher defaults VM_LAUNCHER_FLAKE to
