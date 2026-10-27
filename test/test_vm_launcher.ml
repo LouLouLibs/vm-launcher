@@ -1932,6 +1932,28 @@ let test_boot_prepare_paths_multi_agent () =
   assert_b "no tasks nest for a taskDir-less agent"
     (not (Sys.file_exists (state_dir ^ "/codex/tasks")))
 
+let test_boot_refresh_bind_mountpoints () =
+  with_temp_base @@ fun base ->
+  with_env "HOME" base @@ fun () ->
+  let state_dir = base ^ "/state" in
+  let extra = { codex_agent with task_dir = "nested/tasks" } in
+  let p = Boot.prepare_host_paths
+      { (two_agent_policy ~state_dir) with extra_agents = [ extra ] } in
+  let paths = [ base ^ "/.claude/tasks"; base ^ "/.config/codex/nested/tasks" ] in
+  List.iter Unix.rmdir paths;
+  (* Simulate deletion during the build, then a changed environment:
+     refresh must use the prepared policy's sources, not re-resolve HOME. *)
+  with_env "HOME" (base ^ "/other-home") @@ fun () ->
+  Boot.refresh_bind_mountpoints { p with auth = Ephemeral };
+  assert_b "ephemeral auth does not refresh host config binds"
+    (List.for_all (fun path -> not (Sys.file_exists path)) paths);
+  Boot.refresh_bind_mountpoints p;
+  List.iter (fun path ->
+      assert_b "removed nested mountpoint recreated" (Sys.is_directory path);
+      assert_b "recreated mountpoint is private" (perm_of path = 0o700)) paths;
+  assert_b "refresh uses resolved config hosts"
+    (not (Sys.file_exists (base ^ "/other-home")))
+
 let test_stage_instructions_per_agent () =
   with_temp_base @@ fun etc ->
   let p = two_agent_policy ~state_dir:"/x/state" in
@@ -4525,6 +4547,7 @@ let cases =
     "policy-rejects-duplicate-agent-names", test_policy_rejects_duplicate_agent_names;
     "policy-rejects-bad-agent-name", test_policy_rejects_bad_agent_name;
     "boot-prepare-paths-multi-agent", test_boot_prepare_paths_multi_agent;
+    "boot-refresh-bind-mountpoints", test_boot_refresh_bind_mountpoints;
     "stage-instructions-per-agent", test_stage_instructions_per_agent;
     "render-instructions-names-other-agents",
       test_render_instructions_names_the_other_agents;

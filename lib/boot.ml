@@ -124,6 +124,22 @@ let prepare_host_paths (p : Policy.t) : Policy.t =
     }
   end
 
+(* Host agents can remove empty task directories while nix builds. Refresh
+   mountpoints using the already-resolved config hosts, immediately before
+   virtiofsd opens the RO config binds. Do not repeat state migration or
+   credential seeding here. *)
+let refresh_bind_mountpoints (p : Policy.t) =
+  if p.auth = Policy.Bind then
+    List.iter
+      (fun (a : Policy.agent) ->
+        match a.config_host with
+        | Some config_host ->
+            Util.mkdir_p ~perm:0o700 config_host;
+            if a.task_dir <> "" then
+              Util.mkdir_p ~perm:0o700 (config_host ^ "/" ^ a.task_dir)
+        | None -> invalid_arg "refresh_bind_mountpoints: unresolved config host")
+      (Policy.agents p)
+
 (* --- 2. nix build the runner --- *)
 
 (* Build a child env from the current process env by stripping any
@@ -492,6 +508,7 @@ let run ?(fast = false) ?(detach = false)
   in
   log_phase "staging %d virtiofs share%s (%d read-write, %d read-only)"
     total (if total = 1 then "" else "s") (total - ro_count) ro_count;
+  refresh_bind_mountpoints policy;
   List.iter
     (fun (e : Shares.manifest_entry) ->
       let read_only = is_ro e.tag in

@@ -317,7 +317,7 @@ let suite_fast = true
 let boot_and_run
     ?console ?(fast = suite_fast) ?(env_vars = []) ?(egress_hosts = [])
     ?(extra_tools = []) ?(extra_agents = []) ?auth ?sync_files
-    ?(setup_home = fun _ -> ())
+    ?(setup_home = fun _ -> ()) ?(env_overrides = [])
     ?egress ~startup_commands ~k () =
   with_temp_base @@ fun base ->
   let project = base ^ "/project" in
@@ -333,14 +333,14 @@ let boot_and_run
 
   let pid =
     spawn_launcher
-      ~env_overrides:[
+      ~env_overrides:([
         "VM_LAUNCHER_FLAKE", resolved_flake ();
         "HOME", home;
         (* Pin the derived state dir under the fake $HOME too, so a
            case can pre-seed or inspect it regardless of the caller's
            XDG_STATE_HOME. *)
         "XDG_STATE_HOME", home ^ "/.local/state";
-      ]
+      ] @ env_overrides)
       (* No --keep-state: let the launcher rm-rf its state dir on
          exit so /run/vm-launcher/ doesn't accumulate green-run
          debris. We still get a readable failure trail because
@@ -1093,6 +1093,34 @@ let test_bind_auth_nested_configdir () =
       Printf.printf "    (~/.config = %s; codex home -> %s)\n%!" parent codex_target)
     ()
 
+(* Reproduce #13 deterministically: the shim removes the host mountpoint
+   after a successful real nix build, before Boot.run starts virtiofsds. *)
+let test_bind_tasks_removed_during_build () =
+  with_temp_base @@ fun base ->
+  let shim = base ^ "/nix" in
+  let removed = base ^ "/removed" in
+  let ic = Unix.open_process_in "command -v nix" in
+  let real_nix = input_line ic in
+  assert_b "locate real nix" (Unix.close_process_in ic = Unix.WEXITED 0);
+  let oc = open_out shim in
+  Printf.fprintf oc
+    "#!/bin/sh\n%s \"$@\"\nrc=$?\nif [ \"$rc\" -eq 0 ] && [ \"$1\" = build ]; then\n  rmdir -- \"$HOME/.claude/tasks\" || exit 1\n  touch %s\nfi\nexit \"$rc\"\n"
+    (Filename.quote real_nix) (Filename.quote removed);
+  close_out oc;
+  Unix.chmod shim 0o755;
+  boot_and_run ~auth:"bind"
+    ~env_overrides:[ "PATH", base ^ ":" ^ Sys.getenv "PATH" ]
+    ~startup_commands:[
+      "printf writable > /var/lib/claude/tasks/boot-probe 2>/work/tasks-error";
+      "cat /var/lib/claude/tasks/boot-probe > /work/tasks-result";
+      "touch /work/marker-done";
+    ]
+    ~k:(fun project ->
+      assert_b "shim removed the mountpoint after the build"
+        (Sys.file_exists removed);
+      assert_b "guest booted with a writable task mount after host deletion"
+        (read_file (project ^ "/tasks-result") = "writable")) ()
+
 (* agent.syncFiles: files the agent replaces with write-temp +
    rename (claude's .credentials.json), which a stateFiles symlink can't
    persist. Pins all three halves:
@@ -1506,6 +1534,7 @@ let cases = [
   (* The only bind-auth case: covers agent-home-init, which every
      ephemeral case skips entirely. *)
   "e2e-bind-auth-nested-configdir", test_bind_auth_nested_configdir;
+  "e2e-bind-tasks-removed-during-build", test_bind_tasks_removed_during_build;
   "e2e-sync-files", test_sync_files;
   "e2e-console-hvc0-wires-through", test_console_hvc0_wires_through;
   "e2e-console-ttys0-fallback", test_console_ttys0_fallback;

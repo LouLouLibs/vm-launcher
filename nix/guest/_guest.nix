@@ -559,6 +559,13 @@ let
       "x-systemd.after=systemd-modules-load.service"
     ];
   }) policy.work.readOnly);
+  # Losing a nested mountpoint in the RO bind must only disable the
+  # task tracker, not fail local-fs.target and prevent sshd from starting.
+  # Keep the normal mount ordering so healthy boots see the RW tasks.
+  tasksMountOptions = builtins.listToAttrs (map (share: {
+    name = share.mountPoint;
+    value.options = [ "nofail" "x-systemd.before=local-fs.target" ];
+  }) tasksBind);
 in {
   imports = [
     microvm.nixosModules.microvm
@@ -753,7 +760,7 @@ in {
   };
 
   # Tmpfs root. /nix/store is shared from the host, so no store disk needed.
-  fileSystems = lib.recursiveUpdate (lib.recursiveUpdate {
+  fileSystems = lib.recursiveUpdate (lib.recursiveUpdate (lib.recursiveUpdate {
     # mode=0755, not tmpfs's default 1777. A world-writable / is wrong on
     # its own terms — any process could drop files at the root — and it
     # is load-bearing for ssh: sshd's StrictModes walks every directory
@@ -765,7 +772,7 @@ in {
       options = [ "mode=0755" ];
       neededForBoot = true;
     };
-  } hiddenMounts) roMountOptions;
+  } hiddenMounts) roMountOptions) tasksMountOptions;
 
   # Guest networking: static address on the tap, default route to the host.
   networking = {

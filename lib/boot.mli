@@ -17,6 +17,8 @@
     {- [nix build] the runner closure.}
     {- Validate every share source exists ([virtiofsd] silently fails
        otherwise — cloud-hypervisor times out 60s later).}
+    {- Refresh nested task mountpoints in the host config binds after
+       the build, in case host housekeeping removed them.}
     {- Spawn one [virtiofsd] per share, registered with [session] so
        teardown SIGKILLs them.}
     {- Poll for sockets up to 10s. Hard-fail on timeout (user inspects
@@ -86,6 +88,11 @@ val prepare_host_paths : Policy.t -> Policy.t
     the policy with [agent.config_host] set to [$HOME/<agent.config_dir>]
     when [auth = Bind] (unchanged otherwise) — the source the guest's
     config bind mounts. *)
+
+val refresh_bind_mountpoints : Policy.t -> unit
+(** Re-create config bind sources and nested task mountpoints using
+    [config_host] resolved by [prepare_host_paths]. No-op for ephemeral
+    auth. Runs immediately before spawning virtiofsds. *)
 
 val wait_for_sockets : string list -> timeout:float -> unit
 (** Block until every path in the list refers to a Unix socket, polling
