@@ -12,9 +12,9 @@ const repo = 'https://github.com/LouLouLibs/vm-launcher'
 // VMLAUNCHER_DOCS_BASE overrides it, e.g. '/' for a dedicated host.
 const base = process.env.VMLAUNCHER_DOCS_BASE || '/vm-launcher/'
 
-// One version for the package and the site: the vm-launcher derivation in
-// flake.nix (anchored on its pname; the file pins other versions too).
-const version = readFileSync(new URL('../../flake.nix', import.meta.url), 'utf8').match(/pname = "vm-launcher";\s*version = "([^"]+)"/)![1]
+// One version for the package, the binary and the site: the repo-root
+// VERSION file (flake.nix and lib/dune read the same one).
+const version = readFileSync(new URL('../../VERSION', import.meta.url), 'utf8').trim()
 
 // Links from a page to repository files outside docs/ (the contract, lib/,
 // the README) point at GitHub instead of a missing page.
