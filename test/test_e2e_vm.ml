@@ -1450,6 +1450,18 @@ let test_terminal_logout_keeps_vm () =
       assert_b "`vm-launcher down` succeeds" (rc = 0);
       assert_b "VM gone after down"
         (not (try Unix.kill !runner 0; true with _ -> false));
+      (* Nothing else will reap a detached session's state dir, so
+         `down` must — or the stopped VM lists as "stale" forever. *)
+      assert_b "down removed the state dir"
+        (not (Sys.file_exists state_dir));
+      assert_b "down dropped any current-session link to it"
+        (Array.for_all
+           (fun name ->
+             not (String.length name >= 15
+                  && String.sub name 0 15 = "current-session"
+                  && (try Unix.readlink (state_base ^ "/" ^ name) = state_dir
+                      with _ -> false)))
+           (try Sys.readdir state_base with Sys_error _ -> [||]));
       Printf.printf "    (logout left %s running; down stopped it)\n%!" id)
 
 let cases = [

@@ -13,6 +13,14 @@
     /nix/store is NOT reclaimed here — it's shared between sessions
     and owned by nix ([nix store gc]). *)
 
+val remove_state_dir : state_base:string -> string -> unit
+(** [remove_state_dir ~state_base dir] — tear down a dead session's
+    live state dir: SIGKILL the virtiofsds its pidfiles name (after a
+    /proc cmdline check), drop any [current-session-<i>] symlink
+    pointing at [dir], then [rm -rf dir]. The registry entry is left
+    alone, so the session still lists as "exited". Callers must have
+    established the VM is gone. *)
+
 val run :
   xdg_state_home:string ->
   state_base:string ->
