@@ -5,10 +5,11 @@
      - <xdg>/microvm/sessions/<id>/        the global registry dir
      - <project stateDir>/sessions/<id>    the per-project symlink
      - <state_base>/session-<pid>/         a leftover live state dir
-                                           ("stale": the launcher pid
-                                           is dead but teardown never
-                                           ran — SIGKILL, host crash,
-                                           or --keep-state)
+                                           ("stale": the VM is gone
+                                           but teardown never ran —
+                                           SIGKILL, host crash, a
+                                           guest that powered itself
+                                           off, or --keep-state)
    plus any current-session-<i> symlink still pointing at that state
    dir, and any orphaned virtiofsds the state dir's pidfiles name.
 
@@ -107,6 +108,14 @@ let drop_current_symlinks ~state_base ~target =
             | _ -> ())
         entries
 
+(* Everything a dead VM leaves under [state_base]: its virtiofsds, any
+   current-session link at it, and the state dir itself. Shared with
+   `down`, which runs it as soon as the runner is gone. *)
+let remove_state_dir ~state_base state_dir =
+  kill_leftover_virtiofsds state_dir;
+  drop_current_symlinks ~state_base ~target:state_dir;
+  Util.rm_rf state_dir
+
 let clean_one ~xdg_state_home ~state_base ~live_by_id id =
   if id = "" || id = "." || id = ".." || String.contains id '/'
      || String.contains id '\000' then
@@ -130,10 +139,8 @@ let clean_one ~xdg_state_home ~state_base ~live_by_id id =
       else begin
         (match live with
          | Some pid ->
-             let sdir = Printf.sprintf "%s/session-%d" state_base pid in
-             kill_leftover_virtiofsds sdir;
-             drop_current_symlinks ~state_base ~target:sdir;
-             Util.rm_rf sdir
+             remove_state_dir ~state_base
+               (Printf.sprintf "%s/session-%d" state_base pid)
          | None -> ());
         (* Symlink before registry dir — its target path comes out of
            the manifest we're about to delete. *)

@@ -93,7 +93,9 @@ States:
   `down` reaps it.
 - **exited**: the VM ran and is gone. Normal.
 - **stale**: a state dir whose VM is gone, because teardown never ran
-  (SIGKILL, host crash, `--keep-state`). This is what `clean` is for.
+  (SIGKILL, host crash, a detached guest that powered itself off,
+  `--keep-state`). This is what `clean` is for. `down` tears the state dir
+  down itself, so a VM stopped with `down` lists as **exited**.
 
 Liveness is judged by the VM's **runner** process, never the launcher, which
 is also what stops `clean` from deleting a live VM's state.

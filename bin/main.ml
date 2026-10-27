@@ -424,12 +424,30 @@ let do_down args =
       else (Unix.sleepf 0.3; wait ())
   in
   wait ();
+  (* SIGKILL is not instant: give the kernel a moment to reap before
+     deciding the VM is gone. Judged by /proc identity, not bare pid
+     existence, so a recycled pid can't hold the teardown hostage. *)
+  let deadline = Unix.gettimeofday () +. 5.0 in
+  let rec gone () =
+    if not (Ls.pid_is_runner a.runner_pid) then true
+    else if Unix.gettimeofday () >= deadline then false
+    else (Unix.sleepf 0.2; gone ())
+  in
+  if not (gone ()) then begin
+    Util.log_error
+      "%s: runner pid %d survived SIGKILL; slot and state dir %s left in        place" id a.runner_pid state_dir;
+    exit 1
+  end;
   (* The slot marker and the state dir (virtiofsd sockets, ssh keys) are
-     only safe to drop once the VM is actually gone. *)
+     only safe to drop once the VM is actually gone — and once it is,
+     nothing else will drop them: a detached session has no launcher
+     left to run its teardown. Leaving the dir for `clean` made every
+     stopped session read "stale" in `ls`. The manifest stays, so it
+     lists as "exited". *)
   (try Sys.remove (Printf.sprintf "%s/slot-%d.detached" state_base a.slot)
    with Sys_error _ -> ());
-  Util.log_info "stopped; state dir %s left for `vm-launcher clean %s`"
-    state_dir id;
+  Clean.remove_state_dir ~state_base state_dir;
+  Util.log_info "stopped %s" id;
   exit 0
 
 (* --- bare `vm-launcher`, on a terminal ----------------------------

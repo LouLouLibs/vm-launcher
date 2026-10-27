@@ -27,7 +27,7 @@ vm-launcher clean ID… | --exited
 | Command | Effect |
 |---|---|
 | `attach [ID]` | Open an independent shell in a running VM over ssh. Without `ID`: this project's VM, or the only one. Prints the reattach/stop commands on exit. |
-| `down [ID]` | Power off a detached (or orphaned) VM and release its slot. Refuses a VM still owned by its launching terminal. |
+| `down [ID]` | Power off a detached (or orphaned) VM, release its slot and remove its state dir (the session then lists as `exited`). Refuses a VM still owned by its launching terminal. |
 | `ls [--all]` | List sessions: live and stale first, then the newest exited (`--all`: everything). See [Running VMs](running.md#listing-sessions-ls). |
 | `clean ID…` / `clean --exited` | Delete finished sessions: registry entry, per-project link, stale `/run` state, orphaned `virtiofsd`s. Refuses running sessions. |
 
