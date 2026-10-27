@@ -3317,6 +3317,63 @@ let test_ls_size_column_from_runner_block () =
   assert_b "only the live-path row has a size"
     (count_substr "10.1G" out = 1)
 
+(* STOPPED column: a stale row reports when its VM went down, read from
+   the mtime of the virtiofsd log that recorded the client disconnect.
+   A stale dir whose logs never say so reads "?", not a guess. *)
+let test_ls_stopped_column_for_stale () =
+  with_temp_base @@ fun base ->
+  let xdg = base ^ "/xdg" in
+  let state_base = base ^ "/run" in
+  Unix.mkdir state_base 0o700;
+  let sessions = xdg ^ "/microvm/sessions" in
+  mkdirp sessions;
+  let dead_pid () =
+    match Unix.fork () with
+    | 0 -> Unix._exit 0
+    | n -> ignore (Unix.waitpid [] n); n
+  in
+  let mk_stale id ~log =
+    let d = sessions ^ "/" ^ id in
+    Unix.mkdir d 0o755;
+    write_manifest d id "/home/u/Proj" "2026-01-01T12:00:00+00:00";
+    let sd = Printf.sprintf "%s/session-%d" state_base (dead_pid ()) in
+    mkdirp (sd ^ "/etc");
+    let oc = open_out (sd ^ "/etc/session-id") in
+    output_string oc id;
+    close_out oc;
+    let lp = sd ^ "/virtiofsd-work.log" in
+    let oc = open_out lp in
+    output_string oc log;
+    close_out oc;
+    lp
+  in
+  let connected =
+    "[2026-01-01T12:00:01Z INFO  virtiofsd] Client connected, servicing requests\n"
+  in
+  let lp =
+    mk_stale "20260101T120000-downed"
+      ~log:(connected
+            ^ "[2026-01-02T08:30:00Z INFO  virtiofsd] Client disconnected, shutting down\n")
+  in
+  let t = 1767342600. in
+  Unix.utimes lp t t;
+  ignore (mk_stale "20260101T130000-nolog0" ~log:connected);
+  let (), out =
+    capture_stdout (fun () -> Ls.run ~xdg_state_home:xdg ~state_base ())
+  in
+  let tm = Unix.localtime t in
+  let expected =
+    Printf.sprintf "%04d-%02d-%02d %02d:%02d" (tm.Unix.tm_year + 1900)
+      (tm.Unix.tm_mon + 1) tm.Unix.tm_mday tm.Unix.tm_hour tm.Unix.tm_min
+  in
+  assert_b "STOPPED header present" (contains "STOPPED" out);
+  assert_b "stale row shows its shutdown time" (contains expected out);
+  let line_of id =
+    List.find (fun l -> contains id l) (String.split_on_char '\n' out)
+  in
+  assert_b "no disconnect line → \"?\""
+    (contains "  ?  " (line_of "20260101T130000-nolog0"))
+
 (* clean <id> on an exited session: registry dir + per-project
    symlink both go; an unrelated session survives. *)
 let test_clean_exited_removes_registry_and_symlink () =
@@ -4541,6 +4598,7 @@ let cases =
     "sshd-up-probe", test_sshd_up_probe;
     "ls-size-column-from-runner-block",
       test_ls_size_column_from_runner_block;
+    "ls-stopped-column-for-stale", test_ls_stopped_column_for_stale;
     "clean-exited-removes-registry-and-symlink",
       test_clean_exited_removes_registry_and_symlink;
     "clean-refuses-running-session", test_clean_refuses_running_session;

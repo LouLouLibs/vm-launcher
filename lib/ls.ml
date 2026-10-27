@@ -244,6 +244,49 @@ let contains_sub ~needle hay =
       in
       go 0)
 
+(* When a stale session's VM went down. Nothing on the host is watching
+   at that moment — a detached guest that powers itself off, or a
+   SIGKILLed launcher, runs no teardown — so the time has to be read
+   back from what the VM left behind. Each virtiofsd logs "Client
+   disconnected, shutting down" the instant the runner's end of its
+   socket closes, and writes nothing after, so the newest such log's
+   mtime IS the shutdown time. A state dir whose daemons never logged
+   it (they outlived the runner, or predate the log files) has no
+   honest answer: None, rendered "?", rather than a boot-time mtime
+   dressed up as one. *)
+let stopped_at state_dir =
+  match readdir_opt state_dir with
+  | None -> None
+  | Some entries ->
+      Array.fold_left
+        (fun acc name ->
+          let n = String.length name in
+          if not (n > 14 && String.sub name 0 10 = "virtiofsd-"
+                  && Filename.check_suffix name ".log")
+          then acc
+          else
+            let path = state_dir ^ "/" ^ name in
+            match Util.read_file_opt path with
+            | Some txt when contains_sub ~needle:"Client disconnected" txt -> (
+                match Unix.stat path with
+                | exception _ -> acc
+                | st -> (
+                    match acc with
+                    | Some t when t >= st.Unix.st_mtime -> acc
+                    | _ -> Some st.Unix.st_mtime))
+            | _ -> acc)
+        None entries
+      |> Option.map (fun t ->
+             let tm = Unix.localtime t in
+             Printf.sprintf "%04d-%02d-%02d %02d:%02d" (tm.Unix.tm_year + 1900)
+               (tm.Unix.tm_mon + 1) tm.Unix.tm_mday tm.Unix.tm_hour
+               tm.Unix.tm_min)
+
+(* The STOPPED cell: only a stale row has a shutdown worth reporting. *)
+let stopped_cell ~state_dir state =
+  if state <> "stale" || state_dir = "" then "-"
+  else Option.value ~default:"?" (stopped_at state_dir)
+
 (* Who is attached, and from which terminal.
 
    Every `vm-launcher attach` execs ssh with
@@ -403,6 +446,8 @@ type entry = {
   state : string;         (* running / detached / orphaned / booting /
                              building / exited / stale *)
   up : string;            (* VM uptime, "-" once it is gone *)
+  stopped : string;       (* when a stale VM went down; "?" if its state
+                             dir doesn't say, "-" for every other state *)
   agents : string;        (* claude / claude,codex / "-" *)
   egress : string;        (* fenced / unfenced / airgap *)
   clients : string list;  (* terminals attached over ssh, e.g. ["pts/3"] *)
@@ -462,6 +507,13 @@ let entry_of_manifest ~state_base path id ~pid_for_id =
       { id; project = "(unreadable manifest)"; up = "-"; agents = "-";
         egress = "-"; clients = [];
         launched_at = ""; state = "stale"; pid = pid_for_id id;
+        stopped =
+          (match pid_for_id id with
+           | Some p ->
+               stopped_cell
+                 ~state_dir:(Printf.sprintf "%s/session-%d" state_base p)
+                 "stale"
+           | None -> "?");
         slot = "-"; size = "-" }
   | Some (`Assoc top) ->
       let get_string k =
@@ -529,12 +581,19 @@ let entry_of_manifest ~state_base path id ~pid_for_id =
       { id;
         project = short_project project_full;
         launched_at; state; pid = display_pid; slot; up; agents; egress;
-        clients;
+        clients; stopped = stopped_cell ~state_dir:sd state;
         size = size_of_runner_json top }
   | Some _ ->
       { id; project = "(bad manifest)"; up = "-"; agents = "-"; egress = "-";
         clients = [];
         launched_at = ""; state = "stale"; pid = pid_for_id id;
+        stopped =
+          (match pid_for_id id with
+           | Some p ->
+               stopped_cell
+                 ~state_dir:(Printf.sprintf "%s/session-%d" state_base p)
+                 "stale"
+           | None -> "?");
         slot = "-"; size = "-" }
 
 (* List the session IDs from the global registry. *)
@@ -608,6 +667,7 @@ let print_table ~all entries =
     let w_proj = max_with 16 (fun e -> e.project) in
     let w_state = 11 in
     let w_up = max_with 5 (fun e -> e.up) in
+    let w_stopped = max_with 7 (fun e -> e.stopped) in
     let w_agents = max_with 6 (fun e -> e.agents) in
     let w_egress = max_with 8 (fun e -> e.egress) in
     let clients_str e =
@@ -624,8 +684,9 @@ let print_table ~all entries =
     print_endline
       (sgr "1;90"
          (Printf.sprintf
-            "%-*s  %-*s  %-*s  %-*s  %-*s  %-*s  %-*s  %-*s  %-*s  %s"
+            "%-*s  %-*s  %-*s  %-*s  %-*s  %-*s  %-*s  %-*s  %-*s  %-*s  %s"
             w_id "ID" w_proj "PROJECT" w_state "STATE" w_up "UP"
+            w_stopped "STOPPED"
             w_agents "AGENTS" w_egress "EGRESS" w_cl "ATT" w_pid "PID"
             w_slot "SLOT" "SIZE"));
     List.iter
@@ -633,11 +694,13 @@ let print_table ~all entries =
         (* Finished rows are dimmed whole, so the live ones — the only
            ones you can act on — carry the eye. *)
         let plain s = if live e then s else dim s in
-        Printf.printf "%s  %s  %s  %s  %s  %s  %s  %s  %s  %s\n"
+        Printf.printf "%s  %s  %s  %s  %s  %s  %s  %s  %s  %s  %s\n"
           (pad w_id (plain e.id))
           (pad w_proj (if live e then bold e.project else dim e.project))
           (pad w_state (colour_state e.state))
           (pad w_up (if live e then sgr "37" e.up else dim e.up))
+          (pad w_stopped
+             (if e.state = "stale" then sgr "31" e.stopped else dim e.stopped))
           (pad w_agents (if live e then sgr "35" e.agents else dim e.agents))
           (pad w_egress (if live e then colour_egress e.egress else dim e.egress))
           (pad w_cl
@@ -759,6 +822,10 @@ let collect ~xdg_state_home ~state_base =
              in
              { id; project = "(no manifest)";
                launched_at = ""; state; up = uptime_of_pid pid;
+               stopped =
+                 stopped_cell
+                   ~state_dir:(Printf.sprintf "%s/session-%d" state_base pid)
+                   state;
                agents; egress;
                clients =
                  (match Ssh.read ~state_dir:(Printf.sprintf "%s/session-%d" state_base pid) with
