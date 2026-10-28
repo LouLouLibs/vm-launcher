@@ -36,14 +36,16 @@ val run :
     A stale row whose runner the kernel OOM-killed is marked [OOM] in
     STOPPED, with a footer line naming the session: a detached VM's
     exit status reaches nobody, and "stale" alone hides that the host
-    ran out of memory. [?kernel_log] returns the kernel log between two
-    epoch times; the default reads [journalctl -k], and [None] (no
-    journal access) leaves the row a plain "stale". Tests pass a
-    fixture. *)
+    ran out of memory. The log is searched from the boot to the
+    shutdown time (to now when the state dir never recorded one).
+    [?kernel_log] returns the kernel log between two epoch times; the
+    default reads [journalctl -k], and [None] (no journal access)
+    leaves the row a plain "stale". Tests pass a fixture. *)
 
 val oom_killed_in : pid:int -> string -> bool
-(** Whether the kernel log text records an OOM kill of [pid]
-    (["Killed process <pid> ("], global and memcg alike). *)
+(** Whether the kernel log text records an OOM kill of runner [pid]:
+    ["Killed process <pid> (cloud-hyperviso)"], global and memcg alike.
+    The comm is part of the match so a recycled pid does not count. *)
 
 (** {2 Shared with [Clean]} *)
 
