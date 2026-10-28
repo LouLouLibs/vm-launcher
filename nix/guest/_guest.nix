@@ -724,6 +724,20 @@ in {
     vcpu = policy.resources.vcpu;
     mem = policy.resources.memMb;
 
+    # Return freed guest RAM to the host. Guest memory is shared=on (the
+    # virtiofs shares require it), i.e. host shmem faulted in lazily and
+    # never given back: a guest that once peaked at 40 GB pins 40 GB
+    # until it powers off, and VMs whose memMb sums past host RAM get the
+    # VMM OOM-killed hours later. With a balloon, microvm.nix passes
+    # cloud-hypervisor `free_page_reporting=on` (balloon size stays 0, so
+    # the guest never loses usable memory) and the guest kernel reports
+    # pages it frees; cloud-hypervisor punches them out of the shmem file.
+    # Measured on cloud-hypervisor 52.0: 4 GB freed in the guest left the
+    # host within seconds; without the balloon it stayed resident. Page
+    # cache is not free memory, so it is only returned once the guest
+    # reclaims it.
+    balloon = true;
+
     # Hermetic store: build a per-policy store-disk image containing ONLY
     # the closure of this guest's system. Without it (i.e. sharing the
     # host's /nix/store whole), the guest could reach any binary the host
