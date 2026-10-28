@@ -3396,6 +3396,88 @@ let test_ls_stopped_column_for_stale () =
   assert_b "no disconnect line → \"?\""
     (contains "  ?  " (line_of "20260101T130000-nolog0"))
 
+(* The kernel's OOM line names the pid exactly: a pid that is only a
+   prefix of the killed one must not match. *)
+let test_ls_oom_killed_in () =
+  let log =
+    "Out of memory: Killed process 1334116 (cloud-hyperviso) total-vm:58753064kB\n\
+     Memory cgroup out of memory: Killed process 777 (cloud-hyperviso)\n"
+  in
+  assert_b "global OOM kill found" (Ls.oom_killed_in ~pid:1334116 log);
+  assert_b "memcg OOM kill found" (Ls.oom_killed_in ~pid:777 log);
+  assert_b "pid prefix is not a match" (not (Ls.oom_killed_in ~pid:133411 log));
+  assert_b "pid 0 never matches" (not (Ls.oom_killed_in ~pid:0 log))
+
+(* A stale row whose runner the kernel OOM-killed says so in STOPPED and
+   in a footer line; one that went down otherwise stays plain. The
+   journal is asked only about a window around the shutdown time. *)
+let test_ls_stale_oom_marked () =
+  with_temp_base @@ fun base ->
+  let xdg = base ^ "/xdg" in
+  let state_base = base ^ "/run" in
+  Unix.mkdir state_base 0o700;
+  let sessions = xdg ^ "/microvm/sessions" in
+  mkdirp sessions;
+  let dead_pid () =
+    match Unix.fork () with
+    | 0 -> Unix._exit 0
+    | n -> ignore (Unix.waitpid [] n); n
+  in
+  let t = 1767342600. in
+  let mk_stale id ~runner_pid =
+    let d = sessions ^ "/" ^ id in
+    Unix.mkdir d 0o755;
+    write_manifest d id "/home/u/Proj" "2026-01-01T12:00:00+00:00";
+    let sd = Printf.sprintf "%s/session-%d" state_base (dead_pid ()) in
+    mkdirp (sd ^ "/etc");
+    let oc = open_out (sd ^ "/etc/session-id") in
+    output_string oc id;
+    close_out oc;
+    let lp = sd ^ "/virtiofsd-work.log" in
+    let oc = open_out lp in
+    output_string oc
+      "[2026-01-02T08:30:00Z INFO  virtiofsd] Client disconnected, shutting down\n";
+    close_out oc;
+    Unix.utimes lp t t;
+    Ssh.write ~state_dir:sd
+      { Ssh.id; project = "/home/u/Proj"; slot = 1; guest_ip = "10.42.1.2";
+        user = "agent"; key = sd ^ "/id_ed25519";
+        known_hosts = sd ^ "/known_hosts"; runner_pid; detached = true }
+  in
+  mk_stale "20260101T120000-oomkil" ~runner_pid:999_999_901;
+  mk_stale "20260101T130000-clean0" ~runner_pid:999_999_902;
+  let windows = ref [] in
+  let kernel_log ~since ~until =
+    windows := (since, until) :: !windows;
+    Some "Out of memory: Killed process 999999901 (cloud-hyperviso)\n"
+  in
+  let (), out =
+    capture_stdout (fun () ->
+      Ls.run ~kernel_log ~xdg_state_home:xdg ~state_base ())
+  in
+  let line_of id =
+    List.find (fun l -> contains id l && contains "stale" l)
+      (String.split_on_char '\n' out)
+  in
+  assert_b "OOM-killed row marked"
+    (contains " OOM" (line_of "20260101T120000-oomkil"));
+  assert_b "other stale row not marked"
+    (not (contains " OOM" (line_of "20260101T130000-clean0")));
+  assert_b "footer names the OOM-killed session"
+    (contains "! 20260101T120000-oomkil was OOM-killed" out);
+  assert_b "footer silent about the other"
+    (not (contains "20260101T130000-clean0 was OOM-killed" out));
+  assert_b "journal asked once per stale row" (List.length !windows = 2);
+  assert_b "window brackets the shutdown time"
+    (List.for_all (fun (a, b) -> a < t && t < b) !windows);
+  (* No journal access: nothing is claimed. *)
+  let (), out =
+    capture_stdout (fun () ->
+      Ls.run ~kernel_log:(fun ~since:_ ~until:_ -> None)
+        ~xdg_state_home:xdg ~state_base ())
+  in
+  assert_b "unreadable journal → no OOM claim" (not (contains "OOM" out))
+
 (* clean <id> on an exited session: registry dir + per-project
    symlink both go; an unrelated session survives. *)
 let test_clean_exited_removes_registry_and_symlink () =
@@ -4622,6 +4704,8 @@ let cases =
     "ls-size-column-from-runner-block",
       test_ls_size_column_from_runner_block;
     "ls-stopped-column-for-stale", test_ls_stopped_column_for_stale;
+    "ls-oom-killed-in", test_ls_oom_killed_in;
+    "ls-stale-oom-marked", test_ls_stale_oom_marked;
     "clean-exited-removes-registry-and-symlink",
       test_clean_exited_removes_registry_and_symlink;
     "clean-refuses-running-session", test_clean_refuses_running_session;

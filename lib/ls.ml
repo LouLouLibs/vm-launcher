@@ -254,7 +254,7 @@ let contains_sub ~needle hay =
    it (they outlived the runner, or predate the log files) has no
    honest answer: None, rendered "?", rather than a boot-time mtime
    dressed up as one. *)
-let stopped_at state_dir =
+let stopped_epoch state_dir =
   match readdir_opt state_dir with
   | None -> None
   | Some entries ->
@@ -276,11 +276,64 @@ let stopped_at state_dir =
                     | _ -> Some st.Unix.st_mtime))
             | _ -> acc)
         None entries
-      |> Option.map (fun t ->
-             let tm = Unix.localtime t in
-             Printf.sprintf "%04d-%02d-%02d %02d:%02d" (tm.Unix.tm_year + 1900)
-               (tm.Unix.tm_mon + 1) tm.Unix.tm_mday tm.Unix.tm_hour
-               tm.Unix.tm_min)
+
+let stopped_at state_dir =
+  stopped_epoch state_dir
+  |> Option.map (fun t ->
+         let tm = Unix.localtime t in
+         Printf.sprintf "%04d-%02d-%02d %02d:%02d" (tm.Unix.tm_year + 1900)
+           (tm.Unix.tm_mon + 1) tm.Unix.tm_mday tm.Unix.tm_hour
+           tm.Unix.tm_min)
+
+(* WHY a stale VM went down. A detached VM has nobody waiting on its
+   runner — it is reparented to init — so its exit status is lost, and
+   "stale" alone reads the same for a clean guest poweroff as for a VM
+   the host shot. The one cause worth naming is the kernel OOM killer:
+   guest RAM is shmem faulted in lazily, so VMs whose memMb sums past
+   the host's RAM boot fine and are killed hours later, typically
+   while the user is looking at something else (a reconnecting
+   terminal, say) and blames that instead.
+
+   The kernel logs "Killed process <pid> (<comm>)" for both a global
+   and a memcg OOM kill, and attach.json records the runner pid, so the
+   question is answerable after the fact. The search is confined to a
+   window around the shutdown time from the virtiofsd logs: it keeps
+   the journal read small, and a recycled pid would have to be OOM-
+   killed within the same minutes to fool it. journald may stamp the
+   kill well after the fact under memory pressure (it does exactly
+   then), hence the generous bounds. *)
+let oom_killed_in ~pid log =
+  pid > 0 && contains_sub ~needle:(Printf.sprintf "Killed process %d (" pid) log
+
+(* The kernel ring is root-only on a dmesg_restrict host, so read the
+   journal, which grants it to wheel / systemd-journal. A user without
+   that access, or a host without journald, gets no answer — the row
+   just stays "stale". *)
+let journal_kernel_log ~since ~until =
+  match
+    Util.subprocess_capture_stdout ~stdin_dev_null:true ~stderr_dev_null:true
+      ~prog:"journalctl"
+      ~args:
+        [| "journalctl"; "-k"; "-q"; "--no-pager"; "-o"; "cat";
+           Printf.sprintf "--since=@%.0f" since;
+           Printf.sprintf "--until=@%.0f" until |]
+      ()
+  with
+  | Unix.WEXITED 0, out -> Some out
+  | _ -> None
+  | exception _ -> None
+
+let oom_window = 600.
+
+let stop_was_oom ~kernel_log ~state_dir =
+  match stopped_epoch state_dir, Ssh.read ~state_dir with
+  | Some t, Some a when a.runner_pid > 0 -> (
+      match
+        kernel_log ~since:(t -. oom_window) ~until:(t +. oom_window)
+      with
+      | Some log -> oom_killed_in ~pid:a.runner_pid log
+      | None -> false)
+  | _ -> false
 
 (* The STOPPED cell: only a stale row has a shutdown worth reporting. *)
 let stopped_cell ~state_dir state =
@@ -448,6 +501,8 @@ type entry = {
   up : string;            (* VM uptime, "-" once it is gone *)
   stopped : string;       (* when a stale VM went down; "?" if its state
                              dir doesn't say, "-" for every other state *)
+  oom : bool;             (* a stale VM the kernel OOM killer took;
+                             filled in by [run] only, see [annotate_oom] *)
   agents : string;        (* claude / claude,codex / "-" *)
   egress : string;        (* fenced / unfenced / airgap *)
   clients : string list;  (* terminals attached over ssh, e.g. ["pts/3"] *)
@@ -514,7 +569,7 @@ let entry_of_manifest ~state_base path id ~pid_for_id =
                  ~state_dir:(Printf.sprintf "%s/session-%d" state_base p)
                  "stale"
            | None -> "?");
-        slot = "-"; size = "-" }
+        oom = false; slot = "-"; size = "-" }
   | Some (`Assoc top) ->
       let get_string k =
         match List.assoc_opt k top with
@@ -581,7 +636,7 @@ let entry_of_manifest ~state_base path id ~pid_for_id =
       { id;
         project = short_project project_full;
         launched_at; state; pid = display_pid; slot; up; agents; egress;
-        clients; stopped = stopped_cell ~state_dir:sd state;
+        clients; stopped = stopped_cell ~state_dir:sd state; oom = false;
         size = size_of_runner_json top }
   | Some _ ->
       { id; project = "(bad manifest)"; up = "-"; agents = "-"; egress = "-";
@@ -594,7 +649,7 @@ let entry_of_manifest ~state_base path id ~pid_for_id =
                  ~state_dir:(Printf.sprintf "%s/session-%d" state_base p)
                  "stale"
            | None -> "?");
-        slot = "-"; size = "-" }
+        oom = false; slot = "-"; size = "-" }
 
 (* List the session IDs from the global registry. *)
 let global_session_ids xdg_state_home =
@@ -667,7 +722,8 @@ let print_table ~all entries =
     let w_proj = max_with 16 (fun e -> e.project) in
     let w_state = 11 in
     let w_up = max_with 5 (fun e -> e.up) in
-    let w_stopped = max_with 7 (fun e -> e.stopped) in
+    let stopped_str e = if e.oom then e.stopped ^ " OOM" else e.stopped in
+    let w_stopped = max_with 7 stopped_str in
     let w_agents = max_with 6 (fun e -> e.agents) in
     let w_egress = max_with 8 (fun e -> e.egress) in
     let clients_str e =
@@ -700,7 +756,8 @@ let print_table ~all entries =
           (pad w_state (colour_state e.state))
           (pad w_up (if live e then sgr "37" e.up else dim e.up))
           (pad w_stopped
-             (if e.state = "stale" then sgr "31" e.stopped else dim e.stopped))
+             (if e.state = "stale" then sgr "31" (stopped_str e)
+              else dim e.stopped))
           (pad w_agents (if live e then sgr "35" e.agents else dim e.agents))
           (pad w_egress (if live e then colour_egress e.egress else dim e.egress))
           (pad w_cl
@@ -771,6 +828,19 @@ let print_table ~all entries =
             (dim "attach: vm-launcher attach <ID>   ·   stop: vm-launcher down <ID>")
       | [] -> ()
     end;
+    (match List.filter (fun e -> e.oom) entries with
+     | [] -> ()
+     | oomed ->
+         if n_live = 0 then print_newline ();
+         List.iter
+           (fun e ->
+             Printf.printf "%s\n"
+               (sgr "1;31"
+                  (Printf.sprintf
+                     "! %s was OOM-killed: the host ran out of memory — lower \
+                      memMb or run fewer VMs at once (journalctl -k)"
+                     e.id)))
+           oomed);
     let shown = List.length entries in
     if total > shown then
       Printf.printf "... %d more (vm-launcher ls --all)\n" (total - shown)
@@ -831,13 +901,30 @@ let collect ~xdg_state_home ~state_base =
                  (match Ssh.read ~state_dir:(Printf.sprintf "%s/session-%d" state_base pid) with
                   | Some a -> attached_clients ~known_hosts:a.known_hosts
                   | None -> []);
-               pid = Some pid; slot = "-"; size = "-" }))
+               oom = false; pid = Some pid; slot = "-"; size = "-" }))
       live
   in
   global_entries @ orphans
 
-let run ?(all = false) ~xdg_state_home ~state_base () =
-  print_table ~all (collect ~xdg_state_home ~state_base)
+(* Only [run] asks the journal: [ids] feeds shell completion, which must
+   stay instant, and only the table shows a cause. *)
+let annotate_oom ~kernel_log ~state_base entries =
+  List.map
+    (fun e ->
+      match e.state, e.pid with
+      | "stale", Some p ->
+          { e with
+            oom =
+              stop_was_oom ~kernel_log
+                ~state_dir:(Printf.sprintf "%s/session-%d" state_base p) }
+      | _ -> e)
+    entries
+
+let run ?(all = false) ?(kernel_log = journal_kernel_log) ~xdg_state_home
+    ~state_base () =
+  collect ~xdg_state_home ~state_base
+  |> annotate_oom ~kernel_log ~state_base
+  |> print_table ~all
 
 (* Bare ids, newest first, one per line — the machine-readable half of
    `ls`. Shell completion needs something stable to consume, and the

@@ -12,7 +12,12 @@
     caller appears. *)
 
 val run :
-  ?all:bool -> xdg_state_home:string -> state_base:string -> unit -> unit
+  ?all:bool ->
+  ?kernel_log:(since:float -> until:float -> string option) ->
+  xdg_state_home:string ->
+  state_base:string ->
+  unit ->
+  unit
 (** Walk both registries and print the table to stdout. Missing /
     unreadable dirs degrade to "no sessions found", not an error —
     a fresh box with no launches yet is a normal case.
@@ -26,7 +31,19 @@ val run :
     post-build). The closure is shared between sessions built from
     the same config and reclaimed by [nix store gc] — not by
     [vm-launcher clean] — so the column reads "-" once the store path
-    is gone (and for pre-v0.2.4 manifests that never recorded it). *)
+    is gone (and for pre-v0.2.4 manifests that never recorded it).
+
+    A stale row whose runner the kernel OOM-killed is marked [OOM] in
+    STOPPED, with a footer line naming the session: a detached VM's
+    exit status reaches nobody, and "stale" alone hides that the host
+    ran out of memory. [?kernel_log] returns the kernel log between two
+    epoch times; the default reads [journalctl -k], and [None] (no
+    journal access) leaves the row a plain "stale". Tests pass a
+    fixture. *)
+
+val oom_killed_in : pid:int -> string -> bool
+(** Whether the kernel log text records an OOM kill of [pid]
+    (["Killed process <pid> ("], global and memcg alike). *)
 
 (** {2 Shared with [Clean]} *)
 

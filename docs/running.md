@@ -74,7 +74,7 @@ vm-launcher ls --all      # every recorded session
 |---|---|
 | `STATE` | see below |
 | `UP` | the VM's own uptime (excludes the `nix build`) |
-| `STOPPED` | for a **stale** row, when its VM went down (from the virtiofsd disconnect it logged); `?` if the state dir doesn't record it |
+| `STOPPED` | for a **stale** row, when its VM went down (from the virtiofsd disconnect it logged); `?` if the state dir doesn't record it. Suffixed `OOM` when the kernel log (`journalctl -k`, needs journal access) shows the host's OOM killer took the VM, with a footer line naming the session |
 | `AGENTS` | agents declared by the session's policy |
 | `EGRESS` | `fenced`, `unfenced` or `airgap`; an unfenced VM is also called out in the footer |
 | `ATT` | ssh shells attached right now (the footer names their terminals) |

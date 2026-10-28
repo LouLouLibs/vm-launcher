@@ -40,14 +40,18 @@ val copy_file : ?perm:int -> string -> string -> unit
     the nix expression that probes [pkgs]. *)
 val nixos_config_attr : unit -> string
 
-(** [subprocess_capture_stdout ?env ?stdin_dev_null ~prog ~args ()] —
-    fork+exec [prog] with [args]; capture stdout into the returned
-    string; stderr is inherited. [env] defaults to the current process
-    env. [stdin_dev_null] (default [false]) replaces the child's stdin
-    with /dev/null; the default inherits the launcher's stdin. *)
+(** [subprocess_capture_stdout ?env ?stdin_dev_null ?stderr_dev_null
+    ~prog ~args ()] — fork+exec [prog] with [args]; capture stdout into
+    the returned string. [env] defaults to the current process env.
+    [stdin_dev_null] (default [false]) replaces the child's stdin with
+    /dev/null; the default inherits the launcher's stdin.
+    [stderr_dev_null] (default [false]) likewise silences the child's
+    stderr, for best-effort probes whose complaints are not the user's
+    concern; the default inherits it. *)
 val subprocess_capture_stdout :
   ?env:string array ->
   ?stdin_dev_null:bool ->
+  ?stderr_dev_null:bool ->
   prog:string ->
   args:string array ->
   unit ->
