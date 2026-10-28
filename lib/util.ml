@@ -81,26 +81,33 @@ let nixos_config_attr () =
    child's stdin (vs the launcher's own stdin) — used by nix eval to
    prevent a stray prompt from blocking on the TTY. *)
 let subprocess_capture_stdout
-    ?env ?(stdin_dev_null = false) ~prog ~args () =
+    ?env ?(stdin_dev_null = false) ?(stderr_dev_null = false) ~prog ~args
+    () =
   let pipe_r, pipe_w = Unix.pipe ~cloexec:true () in
   let try_close fd = try Unix.close fd with Unix.Unix_error _ -> () in
   let stdin_fd, owned_stdin =
     if stdin_dev_null
-    then Unix.openfile "/dev/null" [ Unix.O_RDONLY ] 0, true
+    then Unix.openfile "/dev/null" [ Unix.O_RDONLY; Unix.O_CLOEXEC ] 0, true
     else Unix.stdin, false
+  in
+  let stderr_fd, owned_stderr =
+    if stderr_dev_null
+    then Unix.openfile "/dev/null" [ Unix.O_WRONLY; Unix.O_CLOEXEC ] 0, true
+    else Unix.stderr, false
   in
   Fun.protect
     ~finally:(fun () ->
       try_close pipe_r;
       try_close pipe_w;
-      if owned_stdin then try_close stdin_fd)
+      if owned_stdin then try_close stdin_fd;
+      if owned_stderr then try_close stderr_fd)
     (fun () ->
       let pid =
         match env with
         | None ->
-            Unix.create_process prog args stdin_fd pipe_w Unix.stderr
+            Unix.create_process prog args stdin_fd pipe_w stderr_fd
         | Some e ->
-            Unix.create_process_env prog args e stdin_fd pipe_w Unix.stderr
+            Unix.create_process_env prog args e stdin_fd pipe_w stderr_fd
       in
       (* Close the write end NOW so the reader gets EOF when the
          child exits — the finally's [try_close] is idempotent. *)
