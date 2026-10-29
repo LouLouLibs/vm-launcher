@@ -277,13 +277,12 @@ let stopped_epoch state_dir =
             | _ -> acc)
         None entries
 
-let stopped_at state_dir =
-  stopped_epoch state_dir
-  |> Option.map (fun t ->
-         let tm = Unix.localtime t in
-         Printf.sprintf "%04d-%02d-%02d %02d:%02d" (tm.Unix.tm_year + 1900)
-           (tm.Unix.tm_mon + 1) tm.Unix.tm_mday tm.Unix.tm_hour
-           tm.Unix.tm_min)
+let format_minute t =
+  let tm = Unix.localtime t in
+  Printf.sprintf "%04d-%02d-%02d %02d:%02d" (tm.Unix.tm_year + 1900)
+    (tm.Unix.tm_mon + 1) tm.Unix.tm_mday tm.Unix.tm_hour tm.Unix.tm_min
+
+let stopped_at state_dir = Option.map format_minute (stopped_epoch state_dir)
 
 (* WHY a stale VM went down. A detached VM has nobody waiting on its
    runner — it is reparented to init — so its exit status is lost, and
@@ -296,14 +295,35 @@ let stopped_at state_dir =
 
    The kernel logs "Killed process <pid> (<comm>)" for both a global
    and a memcg OOM kill, and attach.json records the runner pid, so the
-   question is answerable after the fact. The search is confined to a
-   window around the shutdown time from the virtiofsd logs: it keeps
-   the journal read small, and a recycled pid would have to be OOM-
-   killed within the same minutes to fool it. journald may stamp the
-   kill well after the fact under memory pressure (it does exactly
-   then), hence the generous bounds. *)
-let oom_killed_in ~pid log =
-  pid > 0 && contains_sub ~needle:(Printf.sprintf "Killed process %d (" pid) log
+   question is answerable after the fact. The search runs from the
+   boot (attach.json is written once the runner exists, so the pid
+   cannot belong to anything else before then) to a while after the
+   shutdown time from the virtiofsd logs — or to now, when those logs
+   never recorded one: the daemons can die without logging the
+   disconnect, and that must not hide the kill. Past the VM's death
+   the pid may be recycled, which is why the comm is matched too
+   (cloud-hypervisor's, truncated to 15 chars by the kernel). journald
+   may stamp the kill well after the fact under memory pressure (it
+   does exactly then), hence the slack. Even days of kernel log are a
+   few hundred KB. *)
+let runner_comm = "cloud-hyperviso"
+
+let oom_kill_line ~pid log =
+  if pid <= 0 then None
+  else
+    let needle = Printf.sprintf "Killed process %d (%s)" pid runner_comm in
+    String.split_on_char '\n' log
+    |> List.find_opt (fun l -> contains_sub ~needle l)
+
+let oom_killed_in ~pid log = Option.is_some (oom_kill_line ~pid log)
+
+(* The journal is read as short-unix, so a line leads with its epoch:
+   that is the kill time, and the STOPPED answer for a state dir that
+   never recorded one. *)
+let line_epoch l =
+  match String.index_opt l ' ' with
+  | Some i -> float_of_string_opt (String.sub l 0 i)
+  | None -> None
 
 (* The kernel ring is root-only on a dmesg_restrict host, so read the
    journal, which grants it to wheel / systemd-journal. A user without
@@ -314,7 +334,7 @@ let journal_kernel_log ~since ~until =
     Util.subprocess_capture_stdout ~stdin_dev_null:true ~stderr_dev_null:true
       ~prog:"journalctl"
       ~args:
-        [| "journalctl"; "-k"; "-q"; "--no-pager"; "-o"; "cat";
+        [| "journalctl"; "-k"; "-q"; "--no-pager"; "-o"; "short-unix";
            Printf.sprintf "--since=@%.0f" since;
            Printf.sprintf "--until=@%.0f" until |]
       ()
@@ -323,17 +343,27 @@ let journal_kernel_log ~since ~until =
   | _ -> None
   | exception _ -> None
 
-let oom_window = 600.
+let oom_slack = 600.
 
-let stop_was_oom ~kernel_log ~state_dir =
-  match stopped_epoch state_dir, Ssh.read ~state_dir with
-  | Some t, Some a when a.runner_pid > 0 -> (
-      match
-        kernel_log ~since:(t -. oom_window) ~until:(t +. oom_window)
-      with
-      | Some log -> oom_killed_in ~pid:a.runner_pid log
-      | None -> false)
-  | _ -> false
+(* [Some kill_time] when the runner was OOM-killed (the time when the
+   log line carries one), [None] otherwise. *)
+let oom_kill ~kernel_log ~state_dir =
+  match
+    Ssh.read ~state_dir, Unix.stat (state_dir ^ "/attach.json")
+  with
+  | exception _ -> None
+  | Some a, st when a.runner_pid > 0 -> (
+      let since = st.Unix.st_mtime -. oom_slack in
+      let until =
+        match stopped_epoch state_dir with
+        | Some t -> t +. oom_slack
+        | None -> Unix.time ()
+      in
+      match kernel_log ~since ~until with
+      | Some log ->
+          Option.map line_epoch (oom_kill_line ~pid:a.runner_pid log)
+      | None -> None)
+  | _ -> None
 
 (* The STOPPED cell: only a stale row has a shutdown worth reporting. *)
 let stopped_cell ~state_dir state =
@@ -912,11 +942,19 @@ let annotate_oom ~kernel_log ~state_base entries =
   List.map
     (fun e ->
       match e.state, e.pid with
-      | "stale", Some p ->
-          { e with
-            oom =
-              stop_was_oom ~kernel_log
-                ~state_dir:(Printf.sprintf "%s/session-%d" state_base p) }
+      | "stale", Some p -> (
+          match
+            oom_kill ~kernel_log
+              ~state_dir:(Printf.sprintf "%s/session-%d" state_base p)
+          with
+          | None -> e
+          | Some killed_at ->
+              let stopped =
+                match e.stopped, killed_at with
+                | "?", Some k -> format_minute k
+                | s, _ -> s
+              in
+              { e with oom = true; stopped })
       | _ -> e)
     entries
 

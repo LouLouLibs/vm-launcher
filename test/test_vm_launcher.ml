@@ -3406,7 +3406,11 @@ let test_ls_oom_killed_in () =
   assert_b "global OOM kill found" (Ls.oom_killed_in ~pid:1334116 log);
   assert_b "memcg OOM kill found" (Ls.oom_killed_in ~pid:777 log);
   assert_b "pid prefix is not a match" (not (Ls.oom_killed_in ~pid:133411 log));
-  assert_b "pid 0 never matches" (not (Ls.oom_killed_in ~pid:0 log))
+  assert_b "pid 0 never matches" (not (Ls.oom_killed_in ~pid:0 log));
+  assert_b "a recycled pid (other comm) is not a match"
+    (not
+       (Ls.oom_killed_in ~pid:4242
+          "Out of memory: Killed process 4242 (Web Content) total-vm:2721196kB\n"))
 
 (* A stale row whose runner the kernel OOM-killed says so in STOPPED and
    in a footer line; one that went down otherwise stays plain. The
@@ -3424,7 +3428,8 @@ let test_ls_stale_oom_marked () =
     | n -> ignore (Unix.waitpid [] n); n
   in
   let t = 1767342600. in
-  let mk_stale id ~runner_pid =
+  let booted = t -. 3600. in
+  let mk_stale ?(logged_stop = true) id ~runner_pid =
     let d = sessions ^ "/" ^ id in
     Unix.mkdir d 0o755;
     write_manifest d id "/home/u/Proj" "2026-01-01T12:00:00+00:00";
@@ -3436,20 +3441,31 @@ let test_ls_stale_oom_marked () =
     let lp = sd ^ "/virtiofsd-work.log" in
     let oc = open_out lp in
     output_string oc
-      "[2026-01-02T08:30:00Z INFO  virtiofsd] Client disconnected, shutting down\n";
+      (if logged_stop then
+         "[2026-01-02T08:30:00Z INFO  virtiofsd] Client disconnected, shutting down\n"
+       else
+         "[2026-01-01T12:00:01Z INFO  virtiofsd] Client connected, servicing requests\n");
     close_out oc;
     Unix.utimes lp t t;
     Ssh.write ~state_dir:sd
       { Ssh.id; project = "/home/u/Proj"; slot = 1; guest_ip = "10.42.1.2";
         user = "agent"; key = sd ^ "/id_ed25519";
-        known_hosts = sd ^ "/known_hosts"; runner_pid; detached = true }
+        known_hosts = sd ^ "/known_hosts"; runner_pid; detached = true };
+    Unix.utimes (sd ^ "/attach.json") booted booted
   in
   mk_stale "20260101T120000-oomkil" ~runner_pid:999_999_901;
   mk_stale "20260101T130000-clean0" ~runner_pid:999_999_902;
+  (* Its daemons died without logging the disconnect: no stop time, but
+     the kill must still be found, searching up to now. *)
+  mk_stale ~logged_stop:false "20260101T140000-nostop" ~runner_pid:999_999_903;
   let windows = ref [] in
   let kernel_log ~since ~until =
     windows := (since, until) :: !windows;
-    Some "Out of memory: Killed process 999999901 (cloud-hyperviso)\n"
+    Some
+      (Printf.sprintf
+         "%.6f myhost kernel: Out of memory: Killed process 999999901 (cloud-hyperviso)\n\
+          %.6f myhost kernel: Out of memory: Killed process 999999903 (cloud-hyperviso)\n"
+         t t)
   in
   let (), out =
     capture_stdout (fun () ->
@@ -3467,9 +3483,20 @@ let test_ls_stale_oom_marked () =
     (contains "! 20260101T120000-oomkil was OOM-killed" out);
   assert_b "footer silent about the other"
     (not (contains "20260101T130000-clean0 was OOM-killed" out));
-  assert_b "journal asked once per stale row" (List.length !windows = 2);
-  assert_b "window brackets the shutdown time"
-    (List.for_all (fun (a, b) -> a < t && t < b) !windows);
+  assert_b "no recorded stop time → still marked"
+    (contains " OOM" (line_of "20260101T140000-nostop"));
+  let tm = Unix.localtime t in
+  let at =
+    Printf.sprintf "%04d-%02d-%02d %02d:%02d" (tm.Unix.tm_year + 1900)
+      (tm.Unix.tm_mon + 1) tm.Unix.tm_mday tm.Unix.tm_hour tm.Unix.tm_min
+  in
+  assert_b "…and STOPPED shows the kill time from the journal"
+    (contains (at ^ " OOM") (line_of "20260101T140000-nostop"));
+  assert_b "journal asked once per stale row" (List.length !windows = 3);
+  assert_b "window runs from the boot past the shutdown time"
+    (List.for_all (fun (a, b) -> a < booted && t < b) !windows);
+  assert_b "an unknown stop time searches up to now"
+    (List.exists (fun (_, b) -> b >= Unix.time () -. 60.) !windows);
   (* No journal access: nothing is claimed. *)
   let (), out =
     capture_stdout (fun () ->
