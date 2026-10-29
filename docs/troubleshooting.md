@@ -49,8 +49,12 @@ guests a setup-token or their own login; see
 - `socket hang up` from `claude remote-control`: the standalone server mode fails behind the egress proxy (a known limitation). Start `claude` interactively and use `/remote-control` instead, which works.
 
 **The guest dies mid-run with no clean shutdown.** The host OOM-killed
-cloud-hypervisor. Lower `resources.memMb`; the launcher warns at launch when
-it exceeds free memory.
+cloud-hypervisor; `vm-launcher ls` marks such a row `OOM`. Lower
+`resources.memMb` or run fewer VMs at once; the launcher warns at launch when
+one VM's `memMb` exceeds free memory. Guests return memory they free to the
+host (virtio-balloon free page reporting), but guest page cache stays resident
+until the guest reclaims it, so several busy VMs can still add up past host
+RAM.
 
 **`policy.tools: nixpkgs has no attribute 'x'`.** A typo, or a package that
 exists only in your host profile or a host-only overlay. Tools resolve against
