@@ -24,7 +24,7 @@ sandbox.
 |---|---|---|---|
 | `project` | string | **required** | Absolute host path of the project, mounted at `/work`. |
 | `work.default` | `'rw` \| `'ro` | `'rw` | Mode of the whole `/work` share. |
-| `work.readOnly` | [string] | `[]` | Subpaths (relative to the project) forced read-only, as real mounts. Put `envs/vm` here so the agent can't rewrite its own policy. |
+| `work.readOnly` | [string] | `[]` | Subpaths (relative to the project) forced read-only, as real mounts. Put `envs/vm` here so the agent can't rewrite its own policy. An entry may be a pattern (`*/data`, `checkout.*/raw`): `*` and `?` match within one path segment, never a leading `.`, and only directories are kept. Patterns are expanded on the host at each boot, so a directory created while the VM runs is not read-only in it until the next boot. |
 | `work.hidden` | [string] | `[]` | Subpaths hidden entirely (`.env`, `secrets/`). |
 | `inputs` | [string] | `[]` | Absolute host paths mounted read-only at `/inputs/<basename>`. |
 | `shares` | [{`source`, `mountPoint`, `readOnly`}] | `[]` | Host paths at a chosen guest path, read-write by default. Every parent of `mountPoint` must exist at boot (`/mnt`, `/srv`, `/opt`, `/var/lib` are safe). |

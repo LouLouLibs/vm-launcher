@@ -4068,6 +4068,55 @@ let test_validate_host_memory_no_memavailable () =
    with Failure _ -> raised := true);
   assert_b "hard check still applies without MemAvailable" !raised
 
+(* --- Resolver.expand_read_only: work.readOnly globs --- *)
+
+let test_glob_segment_matches () =
+  let m = Resolver.glob_segment_matches in
+  assert_b "star matches a suffix" (m "checkout.*" "checkout.main");
+  assert_b "star matches empty" (m "checkout.*" "checkout.");
+  assert_b "star alone matches a name" (m "*" "data");
+  assert_b "literal must match exactly" (not (m "checkout.*" "checkouts"));
+  assert_b "question mark is one char" (m "v?" "v1" && not (m "v?" "v12"));
+  assert_b "inner star" (m "a*z" "abcz" && not (m "a*z" "abcza"));
+  assert_b "star skips a leading dot" (not (m "*" ".git"));
+  assert_b "explicit dot matches hidden" (m ".*" ".git")
+
+let test_expand_read_only () =
+  with_temp_base @@ fun base ->
+  let mkdir p = Unix.mkdir (base ^ "/" ^ p) 0o755 in
+  List.iter mkdir
+    [ "checkout.main"; "checkout.main/raw"; "checkout.main/input";
+      "checkout.b"; "checkout.b/raw";
+      "checkout.c";                          (* no raw: not matched *)
+      ".checkout.hidden"; ".checkout.hidden/raw";
+      "other"; "other/raw" ];
+  (* a FILE named like a match must be skipped, not shared *)
+  let oc = open_out (base ^ "/checkout.file") in
+  close_out oc;
+  let got =
+    Resolver.expand_read_only ~project:base
+      [ "checkout.*/raw"; "checkout.main/input"; "keep/literal";
+        "checkout.main/raw" ]
+  in
+  assert_b
+    (Printf.sprintf "expanded, sorted, literals kept, duplicates dropped: [%s]"
+       (String.concat "; " got))
+    (got
+     = [ "checkout.b/raw"; "checkout.main/raw"; "checkout.main/input";
+         "keep/literal" ])
+
+let test_expand_read_only_files_and_misses () =
+  with_temp_base @@ fun base ->
+  Unix.mkdir (base ^ "/dir.a") 0o755;
+  let oc = open_out (base ^ "/dir.b") in
+  close_out oc;
+  assert_b "a pattern keeps directories only"
+    (Resolver.expand_read_only ~project:base [ "dir.*" ] = [ "dir.a" ]);
+  assert_b "a pattern matching nothing is dropped"
+    (Resolver.expand_read_only ~project:base [ "nope.*/raw" ] = []);
+  assert_b "no patterns: the list is unchanged"
+    (Resolver.expand_read_only ~project:base [ "a"; "b/c" ] = [ "a"; "b/c" ])
+
 (* --- Validate.share_sources: file-vs-directory share guard --- *)
 
 let test_validate_share_sources_all_dirs_ok () =
@@ -4554,6 +4603,10 @@ let cases =
       test_validate_share_sources_inputs_file_raises;
     "validate-share-sources-missing-is-skipped",
       test_validate_share_sources_missing_is_skipped;
+    "glob-segment-matches", test_glob_segment_matches;
+    "expand-read-only", test_expand_read_only;
+    "expand-read-only-files-and-misses",
+      test_expand_read_only_files_and_misses;
     "policy-env-default-empty", test_policy_env_default_empty;
     "policy-env-parse", test_policy_env_parse;
     "policy-env-roundtrip", test_policy_env_roundtrip;

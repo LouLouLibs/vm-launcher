@@ -105,3 +105,17 @@ val resolve_guest :
     - [hostname]: [sanitize_hostname (Filename.basename project)].
     - [username]: [sanitize_username (host_user ^ "-vm")], or
       ["vmlauncher"] when [host_user] is [None] or empty. *)
+
+val glob_segment_matches : string -> string -> bool
+(** [glob_segment_matches pat name]: does one path segment [name] match
+    the pattern segment [pat]? [*] matches any run of characters (empty
+    included), [?] exactly one; everything else matches itself. Neither
+    matches a leading [.] unless [pat] starts with one. *)
+
+val expand_read_only : project:string -> string list -> string list
+(** Expand [work.readOnly] patterns against the project directory.
+    An entry with [*] or [?] becomes the sorted list of DIRECTORIES it
+    matches, relative to [project] (a pattern matching none is dropped,
+    with a warning on stderr). Other entries pass through unchanged.
+    Duplicates keep their first position. Runs at boot, so a directory
+    created later is not covered until the next boot. *)

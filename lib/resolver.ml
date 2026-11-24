@@ -279,3 +279,75 @@ let resolve_guest ~policy_guest ~project ~host_user =
         Some (sanitize_username raw)
   in
   { hostname; username }
+
+(* --- work.readOnly globs --- *)
+
+(* A [work.readOnly] entry may name several directories at once:
+   [*/data] or [checkout.*/raw]. Each entry becomes its own virtiofs
+   share, a tag per concrete path, so patterns are expanded here, on the
+   host, before the policy reaches the guest build. Expanded at every
+   boot: a directory created while a VM runs is NOT read-only in it
+   until the next boot.
+
+   Patterns are matched one path segment at a time. Only [*] (any run of
+   characters, empty included) and [?] (one character) are special;
+   neither crosses a [/], and neither matches a leading [.] unless the
+   pattern segment starts with one, as in the shell. A pattern keeps
+   only the DIRECTORIES it matches (virtiofs shares a directory tree;
+   a file there would hang the guest, see [Validate.share_sources]),
+   sorted so the share list and its tags are stable. A literal entry
+   passes through unchanged and keeps its existing checks. *)
+
+let is_glob s = String.contains s '*' || String.contains s '?'
+
+let glob_segment_matches pat s =
+  let pl = String.length pat and sl = String.length s in
+  let rec go i j =
+    if i = pl then j = sl
+    else
+      match pat.[i] with
+      | '*' -> go (i + 1) j || (j < sl && go i (j + 1))
+      | '?' -> j < sl && go (i + 1) (j + 1)
+      | c -> j < sl && s.[j] = c && go (i + 1) (j + 1)
+  in
+  let hidden = sl > 0 && s.[0] = '.' in
+  let explicit_dot = pl > 0 && pat.[0] = '.' in
+  (explicit_dot || not hidden) && go 0 0
+
+let expand_read_only ~project entries =
+  let root = tilde_expand project in
+  let is_dir p = Sys.file_exists p && Sys.is_directory p in
+  let join rel name = if rel = "" then name else rel ^ "/" ^ name in
+  let segments p =
+    List.filter (fun s -> s <> "" && s <> ".") (String.split_on_char '/' p)
+  in
+  let rec walk rel = function
+    | [] -> if rel <> "" && is_dir (Filename.concat root rel) then [ rel ] else []
+    | seg :: rest when not (is_glob seg) -> walk (join rel seg) rest
+    | seg :: rest ->
+        let dir = if rel = "" then root else Filename.concat root rel in
+        if not (is_dir dir) then []
+        else
+          Sys.readdir dir |> Array.to_list |> List.sort compare
+          |> List.filter (glob_segment_matches seg)
+          |> List.concat_map (fun name -> walk (join rel name) rest)
+  in
+  let expand entry =
+    if not (is_glob entry) then [ entry ]
+    else
+      match walk "" (segments entry) with
+      | [] ->
+          Printf.eprintf
+            "vm-launcher: work.readOnly pattern %S matches no directory \
+             under %s; nothing is made read-only for it\n%!"
+            entry root;
+          []
+      | matches -> matches
+  in
+  let seen = Hashtbl.create 16 in
+  List.concat_map expand entries
+  |> List.filter (fun p ->
+         if Hashtbl.mem seen p then false
+         else (
+           Hashtbl.add seen p ();
+           true))
