@@ -22,6 +22,11 @@
       # an extra virtiofs share mounted on top of /work/<sub>, so the ro is
       # a kernel-level mount — same hardness as the bwrap fs.repo.readOnly
       # binds, no PATH bypass.
+      # An entry may be a pattern: `*` (any run of characters) and `?` (one)
+      # match within one path segment, never a leading `.`; e.g. "*/data".
+      # Patterns are expanded on the host at every boot to the directories
+      # they match, so a directory created while the VM runs stays writable
+      # in it until the next boot.
       readOnly | Array String | default = [],
       # Subpaths hidden entirely: tmpfs over the mountpoint inside the guest.
       # Use for ".env", "secrets/", anything the agent shouldn't even see.

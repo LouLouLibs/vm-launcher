@@ -180,7 +180,15 @@ let fully_resolve (p : Policy.t) : Policy.t =
   let guest =
     Resolver.resolve_guest ~policy_guest:p.guest ~project:p.project ~host_user
   in
-  let p = { p with state_dir = Some state_dir; git; guest } in
+  (* work.readOnly patterns ([*/data]) become concrete subpaths here, so
+     everything downstream (share tags, the guest build, --show) sees
+     plain directories. *)
+  let work : Policy.work =
+    { p.work with
+      Policy.read_only =
+        Resolver.expand_read_only ~project:p.project p.work.Policy.read_only }
+  in
+  let p = { p with state_dir = Some state_dir; git; guest; work } in
   (* shares: validate sources exist + tilde-expand so the JSON the
      guest reads has absolute paths microvm.nix can hand straight to
      virtiofsd. Stage-time failure is much louder than a virtiofsd
